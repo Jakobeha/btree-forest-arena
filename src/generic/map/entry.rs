@@ -1,27 +1,38 @@
+use std::fmt;
+use std::ops::Deref;
+
+use Entry::*;
+
 use crate::generic::{
 	map::{BTreeExt, BTreeExtMut, BTreeMap},
 	node::{Address, Item, Node},
+	Slab,
+	SlabView
 };
-use cc_traits::{SimpleCollectionMut, SimpleCollectionRef, Slab, SlabMut};
-use std::fmt;
+use crate::generic::map::{KeyRef, ValueMut, ValueRef};
+use crate::generic::slab::{Index, Ref, RefMut};
 
 /// A view into a single entry in a map, which may either be vacant or occupied.
 ///
 /// This enum is constructed from the [`entry`](`BTreeMap#entry`) method on [`BTreeMap`].
-pub enum Entry<'a, K, V, C = slab::Slab<Node<K, V>>> {
-	Vacant(VacantEntry<'a, K, V, C>),
-	Occupied(OccupiedEntry<'a, K, V, C>),
+pub enum Entry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+	Vacant(VacantEntry<'a, K, V, I, C>),
+	Occupied(OccupiedEntry<'a, K, V, I, C>),
 }
 
-use Entry::*;
+/// `Deref`-able pointer to a key which may or may not be in a [BTreeMap]
+pub struct EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: SlabView<Node<K, V, I>, Index=I> + 'a>(
+	_EntryKeyRef<'a, K, V, I, C>
+);
+enum _EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: SlabView<Node<K, V, I>, Index=I> + 'a> {
+	Vacant(&'a K),
+	Occupied(KeyRef<'a, K, V, I, C>)
+}
 
-impl<'a, K, V, C: Slab<Node<K, V>>> Entry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
 	/// Gets the address of the entry in the B-Tree.
 	#[inline]
-	pub fn address(&self) -> Address {
+	pub fn address(&self) -> Address<I> {
 		match self {
 			Occupied(entry) => entry.address(),
 			Vacant(entry) => entry.address(),
@@ -36,22 +47,18 @@ where
 	/// use btree_slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
-	/// assert_eq!(map.entry("poneyland").key(), &"poneyland");
+	/// assert_eq!(*map.entry("poneyland").key(), "poneyland");
 	/// ```
 	#[inline]
-	pub fn key(&self) -> &K {
-		match *self {
-			Occupied(ref entry) => entry.key(),
-			Vacant(ref entry) => entry.key(),
+	pub fn key(&self) -> EntryKeyRef<'_, K, V, I, C> {
+		match self {
+			Occupied(entry) => EntryKeyRef::occupied(entry.key()),
+			Vacant(entry) => EntryKeyRef::vacant(entry.key()),
 		}
 	}
 }
 
-impl<'a, K, V, C: SlabMut<Node<K, V>>> Entry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
 	/// Ensures a value is in the entry by inserting the default if empty, and returns
 	/// a mutable reference to the value in the entry.
 	///
@@ -66,7 +73,7 @@ where
 	/// assert_eq!(map["poneyland"], 12);
 	/// ```
 	#[inline]
-	pub fn or_insert(self, default: V) -> &'a mut V {
+	pub fn or_insert(self, default: V) -> ValueMut<'a, K, V, I, C> {
 		match self {
 			Occupied(entry) => entry.into_mut(),
 			Vacant(entry) => entry.insert(default),
@@ -89,7 +96,7 @@ where
 	/// assert_eq!(map["poneyland"], "hoho".to_string());
 	/// ```
 	#[inline]
-	pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> &'a mut V {
+	pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> ValueMut<'a, K, V, I, C> {
 		match self {
 			Occupied(entry) => entry.into_mut(),
 			Vacant(entry) => entry.insert(default()),
@@ -112,7 +119,7 @@ where
 	/// assert_eq!(map["poneyland"], 9);
 	/// ```
 	#[inline]
-	pub fn or_insert_with_key<F: FnOnce(&K) -> V>(self, default: F) -> &'a mut V {
+	pub fn or_insert_with_key<F: FnOnce(&K) -> V>(self, default: F) -> ValueMut<'a, K, V, I, C> {
 		match self {
 			Occupied(entry) => entry.into_mut(),
 			Vacant(entry) => {
@@ -143,13 +150,10 @@ where
 	/// assert_eq!(map["poneyland"], 43);
 	/// ```
 	#[inline]
-	pub fn and_modify<F>(self, f: F) -> Self
-	where
-		F: FnOnce(&mut V),
-	{
+	pub fn and_modify(self, f: impl FnOnce(&mut V)) -> Self {
 		match self {
 			Occupied(mut entry) => {
-				f(entry.get_mut());
+				f(&mut *entry.get_mut());
 				Occupied(entry)
 			}
 			Vacant(entry) => Vacant(entry),
@@ -170,10 +174,7 @@ where
 	/// assert_eq!(map["poneyland"], None);
 	/// ```
 	#[inline]
-	pub fn or_default(self) -> &'a mut V
-	where
-		V: Default,
-	{
+	pub fn or_default(self) -> ValueMut<'a, K, V, I, C> where V: Default {
 		match self {
 			Occupied(entry) => entry.into_mut(),
 			Vacant(entry) => entry.insert(Default::default()),
@@ -181,10 +182,7 @@ where
 	}
 }
 
-impl<'a, K: fmt::Debug, V: fmt::Debug, C: Slab<Node<K, V>>> fmt::Debug for Entry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug for Entry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
@@ -196,16 +194,16 @@ where
 
 /// A view into a vacant entry in a [`BTreeMap`].
 /// It is part of the [`Entry`] enum.
-pub struct VacantEntry<'a, K, V, C = slab::Slab<Node<K, V>>> {
-	pub(crate) map: &'a mut BTreeMap<K, V, C>,
+pub struct VacantEntry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+	pub(crate) map: &'a mut BTreeMap<K, V, I, C>,
 	pub(crate) key: K,
-	pub(crate) addr: Address,
+	pub(crate) addr: Address<I>,
 }
 
-impl<'a, K, V, C: Slab<Node<K, V>>> VacantEntry<'a, K, V, C> {
+impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
 	/// Gets the address of the vacant entry in the B-Tree.
 	#[inline]
-	pub fn address(&self) -> Address {
+	pub fn address(&self) -> Address<I> {
 		self.addr
 	}
 
@@ -216,7 +214,7 @@ impl<'a, K, V, C: Slab<Node<K, V>>> VacantEntry<'a, K, V, C> {
 	/// use btree_slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
-	/// assert_eq!(map.entry("poneyland").key(), &"poneyland");
+	/// assert_eq!(*map.entry("poneyland").key(), "poneyland");
 	/// ```
 	#[inline]
 	pub fn key(&self) -> &K {
@@ -242,11 +240,7 @@ impl<'a, K, V, C: Slab<Node<K, V>>> VacantEntry<'a, K, V, C> {
 	}
 }
 
-impl<'a, K, V, C: SlabMut<Node<K, V>>> VacantEntry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
 	/// Sets the value of the entry with the `VacantEntry`'s key,
 	/// and returns a mutable reference to it.
 	///
@@ -263,13 +257,13 @@ where
 	/// assert_eq!(map["poneyland"], 37);
 	/// ```
 	#[inline]
-	pub fn insert(self, value: V) -> &'a mut V {
+	pub fn insert(self, value: V) -> ValueMut<'a, K, V, I, C> {
 		let addr = self.map.insert_at(self.addr, Item::new(self.key, value));
-		self.map.item_mut(addr).unwrap().value_mut()
+		C::RefMut::<'a, Node<K, V, I>>::cast_map_transitive::<Item<K, V>, V>(self.map.item_mut(addr).unwrap().map(|i| i.value_mut()))
 	}
 }
 
-impl<'a, K: fmt::Debug, V, C: Slab<Node<K, V>>> fmt::Debug for VacantEntry<'a, K, V, C> {
+impl<'a, K: fmt::Debug, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug for VacantEntry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_tuple("VacantEntry").field(self.key()).finish()
@@ -278,18 +272,15 @@ impl<'a, K: fmt::Debug, V, C: Slab<Node<K, V>>> fmt::Debug for VacantEntry<'a, K
 
 /// A view into an occupied entry in a [`BTreeMap`].
 /// It is part of the [`Entry`] enum.
-pub struct OccupiedEntry<'a, K, V, C = slab::Slab<Node<K, V>>> {
-	pub(crate) map: &'a mut BTreeMap<K, V, C>,
-	pub(crate) addr: Address,
+pub struct OccupiedEntry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+	pub(crate) map: &'a mut BTreeMap<K, V, I, C>,
+	pub(crate) addr: Address<I>,
 }
 
-impl<'a, K, V, C: Slab<Node<K, V>>> OccupiedEntry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
 	/// Gets the address of the occupied entry in the B-Tree.
 	#[inline]
-	pub fn address(&self) -> Address {
+	pub fn address(&self) -> Address<I> {
 		self.addr
 	}
 
@@ -308,8 +299,8 @@ where
 	/// }
 	/// ```
 	#[inline]
-	pub fn get(&self) -> &V {
-		self.map.item(self.addr).unwrap().value()
+	pub fn get(&self) -> ValueRef<'_, K, V, I, C> {
+		C::Ref::<'_, Node<K, V, I>>::cast_map_transitive::<Item<K, V>, V>(self.map.item(self.addr).unwrap().map(|i| i.value()))
 	}
 
 	/// Gets a reference to the key in the entry.
@@ -320,19 +311,15 @@ where
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
-	/// assert_eq!(map.entry("poneyland").key(), &"poneyland");
+	/// assert_eq!(*map.entry("poneyland").key(), "poneyland");
 	/// ```
 	#[inline]
-	pub fn key(&self) -> &K {
-		self.map.item(self.addr).unwrap().key()
+	pub fn key(&self) -> KeyRef<'_, K, V, I, C> {
+		C::Ref::<'_, Node<K, V, I>>::cast_map_transitive::<Item<K, V>, K>(self.map.item(self.addr).unwrap().map(|i| i.key()))
 	}
 }
 
-impl<'a, K, V, C: SlabMut<Node<K, V>>> OccupiedEntry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
 	/// Gets a mutable reference to the value in the entry.
 	///
 	/// If you need a reference to the OccupiedEntry that may outlive
@@ -357,8 +344,8 @@ where
 	/// assert_eq!(map["poneyland"], 24);
 	/// ```
 	#[inline]
-	pub fn get_mut(&mut self) -> &mut V {
-		self.map.item_mut(self.addr).unwrap().value_mut()
+	pub fn get_mut(&mut self) -> ValueMut<'_, K, V, I, C> {
+		C::RefMut::<'_, Node<K, V, I>>::cast_map_transitive::<Item<K, V>, V>(self.map.item_mut(self.addr).unwrap().map(|i| i.value_mut()))
 	}
 
 	/// Sets the value of the entry with the OccupiedEntry's key,
@@ -404,8 +391,8 @@ where
 	/// assert_eq!(map["poneyland"], 22);
 	/// ```
 	#[inline]
-	pub fn into_mut(self) -> &'a mut V {
-		self.map.item_mut(self.addr).unwrap().value_mut()
+	pub fn into_mut(self) -> ValueMut<'a, K, V, I, C> {
+		C::RefMut::<'a, Node<K, V, I>>::cast_map_transitive::<Item<K, V>, V>(self.map.item_mut(self.addr).unwrap().map(|i| i.value_mut()))
 	}
 
 	/// Takes the value of the entry out of the map, and returns it.
@@ -454,16 +441,36 @@ where
 	}
 }
 
-impl<'a, K: fmt::Debug, V: fmt::Debug, C: Slab<Node<K, V>>> fmt::Debug
-	for OccupiedEntry<'a, K, V, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug
+	for OccupiedEntry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_struct("OccupiedEntry")
-			.field("key", self.key())
-			.field("value", self.get())
+			.field("key", &*self.key())
+			.field("value", &*self.get())
 			.finish()
+	}
+}
+
+impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> EntryKeyRef<'a, K, V, I, C> {
+	#[inline]
+	fn occupied(key: KeyRef<'a, K, V, I, C>) -> Self {
+		Self(_EntryKeyRef::Occupied(key))
+	}
+	#[inline]
+	fn vacant(key: &'a K) -> Self {
+		Self(_EntryKeyRef::Vacant(key))
+	}
+}
+
+impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Deref for EntryKeyRef<'a, K, V, I, C> {
+	type Target = K;
+
+	#[inline]
+	fn deref(&self) -> &Self::Target {
+		match &self.0 {
+			_EntryKeyRef::Vacant(k) => &*k,
+			_EntryKeyRef::Occupied(k) => &*k
+		}
 	}
 }

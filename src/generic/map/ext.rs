@@ -1,10 +1,8 @@
-use crate::generic::{
-	map::{BTreeMap, M},
-	node::{Address, Balance, Item, Node, Offset},
-};
-use cc_traits::{SimpleCollectionMut, SimpleCollectionRef, Slab, SlabMut};
+use crate::generic::{map::{BTreeMap, M, ValueRef}, node::{Address, Balance, Item, Node, Offset}, Slab, SlabView};
 use smallvec::SmallVec;
 use std::{borrow::Borrow, mem::MaybeUninit};
+use crate::generic::map::{alter_value_lifetime, ItemMut, ItemRef, ValueMut};
+use crate::generic::slab::{Index, Ref, RefMut};
 
 /// Extended API.
 ///
@@ -16,57 +14,58 @@ use std::{borrow::Borrow, mem::MaybeUninit};
 ///
 /// In this implementation of B-Trees, each node of a tree is addressed
 /// by the [`Address`] type.
-/// Each node is identified by a `usize`, and each item/entry in the node by an [`Offset`].
+/// Each node is identified by a `I`, and each item/entry in the node by an [`Offset`].
 /// This extended API allows the caller to explore, access and modify the
 /// internal structure of the tree using this addressing system.
 ///
 /// Note that a valid address does not always refer to an actual item in the tree.
 /// See the [`Address`] type documentation for more details.
-pub trait BTreeExt<K, V> {
+pub trait BTreeExt<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	/// Get the root node id.
 	///
 	/// Returns `None` if the tree is empty.
-	fn root_id(&self) -> Option<usize>;
+	fn root_id(&self) -> Option<I>;
 
 	/// Get the node associated to the given `id`.
 	///
 	/// Panics if `id` is out of bounds.
-	fn node(&self, id: usize) -> &Node<K, V>;
+	fn node(&self, id: I) -> C::Ref<'_, Node<K, V, I>>;
 
 	/// Get a reference to the value associated to the given `key` in the node `id`, if any.
-	fn get_in<Q: ?Sized>(&self, key: &Q, id: usize) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Ord;
+	fn get_in<Q: Ord + ?Sized>(
+		&self,
+		key: &Q,
+		id: I
+	) -> Option<ValueRef<'_, K, V, I, C>> where K: Borrow<Q>;
 
 	/// Get a reference to the item located at the given address.
-	fn item(&self, addr: Address) -> Option<&Item<K, V>>;
+	fn item(&self, addr: Address<I>) -> Option<ItemRef<'_, K, V, I, C>>;
 
 	/// Get the first item address, if any.
 	///
 	/// Returns the first occupied valid address, or `None` if the tree is empty.
-	fn first_item_address(&self) -> Option<Address>;
+	fn first_item_address(&self) -> Option<Address<I>>;
 
 	/// Get the first back address.
 	///
 	/// The returned address may not be occupied if the tree is empty.
-	fn first_back_address(&self) -> Address;
+	fn first_back_address(&self) -> Address<I>;
 
 	/// Get the last item address, if any.
 	///
 	/// Returns the last occupied valid address, or `None` if the tree is empty.
-	fn last_item_address(&self) -> Option<Address>;
+	fn last_item_address(&self) -> Option<Address<I>>;
 
 	/// Get the last valid address in the tree.
-	fn last_valid_address(&self) -> Address;
+	fn last_valid_address(&self) -> Address<I>;
 
 	/// Normalizes the given item address so that an out-of-node-bounds address points to the next item.
-	fn normalize(&self, addr: Address) -> Option<Address>;
+	fn normalize(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Returns the greatest valid leaf address that directly precedes the given address.
 	///
 	/// A "leaf address" is an address located in a leaf node.
-	fn leaf_address(&self, addr: Address) -> Address;
+	fn leaf_address(&self, addr: Address<I>) -> Address<I>;
 
 	/// Get the previous item address.
 	///
@@ -90,7 +89,7 @@ pub trait BTreeExt<K, V> {
 	///       │  ╚═════╝     ╚══╪══╝          │  ╚═════╝     ╚══╪══╝          │  ╚═════╝  │
 	///       └─────────────────┘             └─────────────────┘             └───────────┘
 	/// ```
-	fn previous_item_address(&self, addr: Address) -> Option<Address>;
+	fn previous_item_address(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Get the previous front address.
 	///
@@ -117,7 +116,7 @@ pub trait BTreeExt<K, V> {
 	///          ╚══╪══╝     ╚═════╝  │          ╚══╪══╝     ╚═════╝  │          ╚══╪══╝     ╚══╪═╝
 	///             └─────────────────┘             └─────────────────┘             └───────────┘
 	/// ```
-	fn previous_front_address(&self, addr: Address) -> Option<Address>;
+	fn previous_front_address(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Get the next item address.
 	///
@@ -141,7 +140,7 @@ pub trait BTreeExt<K, V> {
 	///       │  ╚═════╝     ╚══╪══╝          │  ╚═════╝     ╚══╪══╝          │  ╚═════╝  │
 	///       └─────────────────┘             └─────────────────┘             └───────────┘
 	/// ```
-	fn next_item_address(&self, addr: Address) -> Option<Address>;
+	fn next_item_address(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Get the next back address.
 	///
@@ -168,36 +167,28 @@ pub trait BTreeExt<K, V> {
 	///       │  ╚═════╝     ╚══╪══╝          │  ╚═════╝     ╚══╪══╝          │  ╚═════╝  │
 	///       └─────────────────┘             └─────────────────┘             └───────────┘
 	/// ```
-	fn next_back_address(&self, addr: Address) -> Option<Address>;
+	fn next_back_address(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Get the next item address if any, or the next back address otherwise.
-	fn next_item_or_back_address(&self, addr: Address) -> Option<Address>;
+	fn next_item_or_back_address(&self, addr: Address<I>) -> Option<Address<I>>;
 
 	/// Get the address of the given key.
 	///
 	/// Returns `Ok(addr)` if the key is used in the tree.
 	/// If the key is not used in the tree then `Err(addr)` is returned,
 	/// where `addr` can be used to insert the missing key.
-	fn address_of<Q: ?Sized>(&self, key: &Q) -> Result<Address, Address>
-	where
-		K: Borrow<Q>,
-		Q: Ord;
+	fn address_of<Q: Ord + ?Sized>(&self, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q>;
 
 	/// Search for the address of the given key from the given node `id`.
 	///
 	/// Users should directly use [`BTreeExt::address_of`].
-	fn address_in<Q: ?Sized>(&self, id: usize, key: &Q) -> Result<Address, Address>
-	where
-		K: Borrow<Q>,
-		Q: Ord;
+	fn address_in<Q: Ord + ?Sized>(&self, id: I, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q>;
 
 	/// Validate the tree.
 	///
 	/// Panics if the tree is not a valid B-Tree.
 	#[cfg(debug_assertions)]
-	fn validate(&self)
-	where
-		K: Ord;
+	fn validate(&self) where K: Ord;
 
 	/// Validate the given node and returns the depth of the node.
 	///
@@ -205,13 +196,11 @@ pub trait BTreeExt<K, V> {
 	#[cfg(debug_assertions)]
 	fn validate_node(
 		&self,
-		id: usize,
-		parent: Option<usize>,
+		id: I,
+		parent: Option<I>,
 		min: Option<&K>,
 		max: Option<&K>,
-	) -> usize
-	where
-		K: Ord;
+	) -> usize where K: Ord;
 }
 
 /// Extended mutable API.
@@ -225,31 +214,33 @@ pub trait BTreeExt<K, V> {
 /// The user of this trait is responsible to preserve the invariants of the data-structure.
 /// In particular, no item must be modified or inserted in a way that
 /// break the order between keys.
-pub trait BTreeExtMut<K, V> {
+pub trait BTreeExtMut<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> {
 	/// Set the new known number of items in the tree.
 	fn set_len(&mut self, len: usize);
 
 	/// Set the root node identifier.
-	fn set_root_id(&mut self, id: Option<usize>);
+	fn set_root_id(&mut self, id: Option<I>);
 
 	/// Get the node associated to the given `id` mutably.
 	///
 	/// Panics if `id` is out of bounds.
-	fn node_mut(&mut self, id: usize) -> &mut Node<K, V>;
+	fn node_mut(&mut self, id: I) -> C::RefMut<'_, Node<K, V, I>>;
 
 	/// Get a mutable reference to the value associated to the given `key` in the node `id`, if any.
-	fn get_mut_in(&mut self, key: &K, id: usize) -> Option<&mut V>
-	where
-		K: Ord;
+	fn get_mut_in<Q: Ord + ?Sized>(
+		&mut self,
+		key: &Q,
+		id: I
+	) -> Option<ValueMut<'_, K, V, I, C>> where K: Borrow<Q>;
 
 	/// Get a mutable reference to the item located at the given address.
-	fn item_mut(&mut self, addr: Address) -> Option<&mut Item<K, V>>;
+	fn item_mut(&mut self, addr: Address<I>) -> Option<ItemMut<'_, K, V, I, C>>;
 
 	/// Insert an item at the given address.
 	///
 	/// The address is first converted into a leaf address using [`BTreeExt::leaf_address`]
 	/// and the item inserted using [`BTreeExtMut::insert_exactly_at`].
-	fn insert_at(&mut self, addr: Address, item: Item<K, V>) -> Address;
+	fn insert_at(&mut self, addr: Address<I>, item: Item<K, V>) -> Address<I>;
 
 	/// Insert an item at the given address.
 	///
@@ -268,85 +259,81 @@ pub trait BTreeExtMut<K, V> {
 	/// This function panics if the address refers to an internal node and `opt_right_id` is `None`.
 	fn insert_exactly_at(
 		&mut self,
-		addr: Address,
+		addr: Address<I>,
 		item: Item<K, V>,
-		opt_right_id: Option<usize>,
-	) -> Address;
+		opt_right_id: Option<I>,
+	) -> Address<I>;
 
 	/// Replaces the key-value binding at the given address.
-	fn replace_at(&mut self, addr: Address, key: K, value: V) -> (K, V);
+	fn replace_at(&mut self, addr: Address<I>, key: K, value: V) -> (K, V);
 
 	/// Replaces the value at the given address.
-	fn replace_value_at(&mut self, addr: Address, value: V) -> V;
+	fn replace_value_at(&mut self, addr: Address<I>, value: V) -> V;
 
 	/// Removes the item at the given address, if any.
 	///
 	/// If an item is removed then
 	/// this function returns a pair where the first hand side is the removed item,
 	/// and the right hand side is the updated address where the item can be reinserted at.
-	fn remove_at(&mut self, addr: Address) -> Option<(Item<K, V>, Address)>;
+	fn remove_at(&mut self, addr: Address<I>) -> Option<(Item<K, V>, Address<I>)>;
 
 	/// Rebalance a node, if necessary.
-	fn rebalance(&mut self, node_id: usize, addr: Address) -> Address;
+	fn rebalance(&mut self, node_id: I, addr: Address<I>) -> Address<I>;
 
 	/// Update a value in the given node `node_id`.
-	fn update_in<T, F>(&mut self, id: usize, key: K, action: F) -> T
-	where
-		K: Ord,
-		F: FnOnce(Option<V>) -> (Option<V>, T);
+	fn update_in<T>(
+		&mut self,
+		id: I,
+		key: K, action: impl FnOnce(Option<V>) -> (Option<V>, T)
+	) -> T where K: Ord;
 
 	/// Update a valud at the given address.
-	fn update_at<T, F>(&mut self, addr: Address, action: F) -> T
-	where
-		K: Ord,
-		F: FnOnce(V) -> (Option<V>, T);
+	fn update_at<T>(
+		&mut self,
+		addr: Address<I>,
+		action: impl FnOnce(V) -> (Option<V>, T)
+	) -> T where K: Ord;
 
 	/// Take the right-most leaf value in the given node.
 	///
 	/// Note that this does not change the registred length of the tree.
 	/// The returned item is expected to be reinserted in the tree.
-	fn remove_rightmost_leaf_of(&mut self, node_id: usize) -> (Item<K, V>, usize);
+	fn remove_rightmost_leaf_of(&mut self, node_id: I) -> (Item<K, V>, I);
 
 	/// Allocate a free identifier for the given node.
-	fn allocate_node(&mut self, node: Node<K, V>) -> usize;
+	fn allocate_node(&mut self, node: Node<K, V, I>) -> I;
 
 	/// Release the given node identifier and return the node it used to identify.
-	fn release_node(&mut self, id: usize) -> Node<K, V>;
+	fn release_node(&mut self, id: I) -> Node<K, V, I>;
 }
 
-impl<K, V, C: Slab<Node<K, V>>> BTreeExt<K, V> for BTreeMap<K, V, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> for BTreeMap<K, V, I, C> {
 	#[inline]
-	fn root_id(&self) -> Option<usize> {
+	fn root_id(&self) -> Option<I> {
 		self.root
 	}
 
 	#[inline]
-	fn node(&self, id: usize) -> &Node<K, V> {
-		C::into_ref(self.nodes.get(id).unwrap())
+	fn node(&self, id: I) -> C::Ref<'_, Node<K, V, I>> {
+		self.store.get(id).unwrap()
 	}
 
 	#[inline]
-	fn get_in<Q: ?Sized>(&self, key: &Q, mut id: usize) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	fn get_in<Q: Ord + ?Sized>(&self, key: &Q, mut id: I) -> Option<ValueRef<'_, K, V, I, C>> where K: Borrow<Q> {
 		loop {
-			match self.node(id).get(key) {
-				Ok(value_opt) => return value_opt,
-				Err(child_id) => id = child_id,
+			match self.node(id).try_map3(|n| n.get(key)) {
+				Ok(value_opt) => break Some(value_opt),
+				Err((None, _)) => break None,
+				Err((Some(child_id), _)) => id = child_id,
 			}
 		}
 	}
 
-	fn item(&self, addr: Address) -> Option<&Item<K, V>> {
-		self.node(addr.id).item(addr.offset)
+	fn item(&self, addr: Address<I>) -> Option<ItemRef<'_, K, V, I, C>> {
+		self.node(addr.id).try_map(|n| n.item(addr.offset)).ok()
 	}
 
-	fn first_item_address(&self) -> Option<Address> {
+	fn first_item_address(&self) -> Option<Address<I>> {
 		match self.root {
 			Some(mut id) => loop {
 				match self.node(id).child_id_opt(0) {
@@ -358,7 +345,7 @@ where
 		}
 	}
 
-	fn first_back_address(&self) -> Address {
+	fn first_back_address(&self) -> Address<I> {
 		match self.root {
 			Some(mut id) => loop {
 				match self.node(id).child_id_opt(0) {
@@ -370,7 +357,7 @@ where
 		}
 	}
 
-	fn last_item_address(&self) -> Option<Address> {
+	fn last_item_address(&self) -> Option<Address<I>> {
 		match self.root {
 			Some(mut id) => loop {
 				let node = self.node(id);
@@ -384,7 +371,7 @@ where
 		}
 	}
 
-	fn last_valid_address(&self) -> Address {
+	fn last_valid_address(&self) -> Address<I> {
 		match self.root {
 			Some(mut id) => loop {
 				let node = self.node(id);
@@ -398,7 +385,8 @@ where
 		}
 	}
 
-	fn normalize(&self, mut addr: Address) -> Option<Address> {
+	//noinspection DuplicatedCode
+	fn normalize(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			None
 		} else {
@@ -420,7 +408,7 @@ where
 	}
 
 	#[inline]
-	fn leaf_address(&self, mut addr: Address) -> Address {
+	fn leaf_address(&self, mut addr: Address<I>) -> Address<I> {
 		if !addr.is_nowhere() {
 			loop {
 				let node = self.node(addr.id);
@@ -438,9 +426,10 @@ where
 		addr
 	}
 
+	//noinspection DuplicatedCode
 	/// Get the address of the item located before this address.
 	#[inline]
-	fn previous_item_address(&self, mut addr: Address) -> Option<Address> {
+	fn previous_item_address(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			return None;
 		}
@@ -473,7 +462,7 @@ where
 	}
 
 	#[inline]
-	fn previous_front_address(&self, mut addr: Address) -> Option<Address> {
+	fn previous_front_address(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			return None;
 		}
@@ -514,9 +503,9 @@ where
 		Some(addr)
 	}
 
-	/// Get the address of the item located after this address if any.
+	//noinspection DuplicatedCode
 	#[inline]
-	fn next_item_address(&self, mut addr: Address) -> Option<Address> {
+	fn next_item_address(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			return None;
 		}
@@ -569,7 +558,7 @@ where
 	}
 
 	#[inline]
-	fn next_back_address(&self, mut addr: Address) -> Option<Address> {
+	fn next_back_address(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			return None;
 		}
@@ -607,8 +596,9 @@ where
 		Some(addr)
 	}
 
+	//noinspection DuplicatedCode
 	#[inline]
-	fn next_item_or_back_address(&self, mut addr: Address) -> Option<Address> {
+	fn next_item_or_back_address(&self, mut addr: Address<I>) -> Option<Address<I>> {
 		if addr.is_nowhere() {
 			return None;
 		}
@@ -654,22 +644,14 @@ where
 		}
 	}
 
-	fn address_of<Q: ?Sized>(&self, key: &Q) -> Result<Address, Address>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	fn address_of<Q: Ord + ?Sized>(&self, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q> {
 		match self.root {
 			Some(id) => self.address_in(id, key),
 			None => Err(Address::nowhere()),
 		}
 	}
 
-	fn address_in<Q: ?Sized>(&self, mut id: usize, key: &Q) -> Result<Address, Address>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	fn address_in<Q: Ord + ?Sized>(&self, mut id: I, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q> {
 		loop {
 			match self.node(id).offset_of(key) {
 				Ok(offset) => return Ok(Address { id, offset }),
@@ -682,10 +664,7 @@ where
 	}
 
 	#[cfg(debug_assertions)]
-	fn validate(&self)
-	where
-		K: Ord,
-	{
+	fn validate(&self) where K: Ord {
 		if let Some(id) = self.root {
 			self.validate_node(id, None, None, None);
 		}
@@ -695,14 +674,11 @@ where
 	#[cfg(debug_assertions)]
 	fn validate_node(
 		&self,
-		id: usize,
-		parent: Option<usize>,
+		id: I,
+		parent: Option<I>,
 		mut min: Option<&K>,
 		mut max: Option<&K>,
-	) -> usize
-	where
-		K: Ord,
-	{
+	) -> usize where K: Ord {
 		let node = self.node(id);
 		node.validate(parent, min, max);
 
@@ -730,59 +706,54 @@ where
 	}
 }
 
-impl<K, V, C: SlabMut<Node<K, V>>> BTreeExtMut<K, V> for BTreeMap<K, V, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeExtMut<K, V, I, C> for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn set_len(&mut self, new_len: usize) {
 		self.len = new_len
 	}
 
 	#[inline]
-	fn set_root_id(&mut self, id: Option<usize>) {
+	fn set_root_id(&mut self, id: Option<I>) {
 		self.root = id
 	}
 
 	#[inline]
-	fn node_mut(&mut self, id: usize) -> &mut Node<K, V> {
-		C::into_mut(self.nodes.get_mut(id).unwrap())
+	fn node_mut(&mut self, id: I) -> C::RefMut<'_, Node<K, V, I>> {
+		self.store.get_mut(id).unwrap()
 	}
 
 	#[inline]
-	fn get_mut_in<'a>(&'a mut self, key: &K, mut id: usize) -> Option<&'a mut V>
-	where
-		K: Ord,
-	{
+	fn get_mut_in<Q: Ord + ?Sized>(
+		&mut self,
+		key: &Q,
+		mut id: I
+	) -> Option<ValueMut<'_, K, V, I, C>> where K: Borrow<Q> {
 		// The borrow checker is unable to predict that `*self`
 		// is not borrowed more that once at a time.
-		// That's why we need this little unsafe pointer gymnastic.
-
-		let value_ptr = loop {
-			match self.node_mut(id).get_mut(key) {
-				Ok(value_opt) => break value_opt.map(|value_ref| value_ref as *mut V),
-				Err(child_id) => id = child_id,
+		// That's why we need alter_value_lifetime (which is safe)
+		loop {
+			match self.node_mut(id).try_map3(|n| n.get_mut(key)) {
+				Ok(value) => break Some(unsafe { alter_value_lifetime::<K, V, I, C>(value) }),
+				Err((None, _)) => break None,
+				Err((Some(child_id), _)) => id = child_id,
 			}
-		};
-
-		unsafe { value_ptr.map(|ptr| &mut *ptr) }
+		}
 	}
 
-	fn item_mut(&mut self, addr: Address) -> Option<&mut Item<K, V>> {
-		self.node_mut(addr.id).item_mut(addr.offset)
+	fn item_mut(&mut self, addr: Address<I>) -> Option<ItemMut<'_, K, V, I, C>> {
+		self.node_mut(addr.id).try_map(|n| n.item_mut(addr.offset)).ok()
 	}
 
-	fn insert_at(&mut self, addr: Address, item: Item<K, V>) -> Address {
+	fn insert_at(&mut self, addr: Address<I>, item: Item<K, V>) -> Address<I> {
 		self.insert_exactly_at(self.leaf_address(addr), item, None)
 	}
 
 	fn insert_exactly_at(
 		&mut self,
-		addr: Address,
+		addr: Address<I>,
 		item: Item<K, V>,
-		opt_right_id: Option<usize>,
-	) -> Address {
+		opt_right_id: Option<I>,
+	) -> Address<I> {
 		if addr.is_nowhere() {
 			if self.is_empty() {
 				let new_root = Node::leaf(None, item);
@@ -807,14 +778,14 @@ where
 		}
 	}
 
-	fn replace_at(&mut self, addr: Address, key: K, value: V) -> (K, V) {
+	fn replace_at(&mut self, addr: Address<I>, key: K, value: V) -> (K, V) {
 		self.node_mut(addr.id)
 			.item_mut(addr.offset)
 			.unwrap()
 			.set(key, value)
 	}
 
-	fn replace_value_at(&mut self, addr: Address, value: V) -> V {
+	fn replace_value_at(&mut self, addr: Address<I>, value: V) -> V {
 		self.node_mut(addr.id)
 			.item_mut(addr.offset)
 			.unwrap()
@@ -822,9 +793,10 @@ where
 	}
 
 	#[inline]
-	fn remove_at(&mut self, addr: Address) -> Option<(Item<K, V>, Address)> {
+	fn remove_at(&mut self, addr: Address<I>) -> Option<(Item<K, V>, Address<I>)> {
 		self.len -= 1;
-		match self.node_mut(addr.id).leaf_remove(addr.offset) {
+		let x = self.node_mut(addr.id).leaf_remove(addr.offset);
+		match x {
 			Some(Ok(item)) => {
 				// removed from a leaf.
 				let addr = self.rebalance(addr.id, addr);
@@ -842,78 +814,8 @@ where
 		}
 	}
 
-	fn update_in<T, F>(&mut self, mut id: usize, key: K, action: F) -> T
-	where
-		K: Ord,
-		F: FnOnce(Option<V>) -> (Option<V>, T),
-	{
-		loop {
-			match self.node(id).offset_of(&key) {
-				Ok(offset) => unsafe {
-					let mut value = MaybeUninit::uninit();
-					let item = self.node_mut(id).item_mut(offset).unwrap();
-					std::mem::swap(&mut value, item.maybe_uninit_value_mut());
-					let (opt_new_value, result) = action(Some(value.assume_init()));
-					match opt_new_value {
-						Some(new_value) => {
-							let mut new_value = MaybeUninit::new(new_value);
-							std::mem::swap(&mut new_value, item.maybe_uninit_value_mut());
-						}
-						None => {
-							let (item, _) = self.remove_at(Address::new(id, offset)).unwrap();
-							// item's value is NOT initialized here.
-							// It must not be dropped.
-							item.forget_value()
-						}
-					}
-
-					return result;
-				},
-				Err((offset, None)) => {
-					let (opt_new_value, result) = action(None);
-					if let Some(new_value) = opt_new_value {
-						let leaf_addr = Address::new(id, offset.into());
-						self.insert_exactly_at(leaf_addr, Item::new(key, new_value), None);
-					}
-
-					return result;
-				}
-				Err((_, Some(child_id))) => {
-					id = child_id;
-				}
-			}
-		}
-	}
-
-	fn update_at<T, F>(&mut self, addr: Address, action: F) -> T
-	where
-		K: Ord,
-		F: FnOnce(V) -> (Option<V>, T),
-	{
-		unsafe {
-			let mut value = MaybeUninit::uninit();
-			let item = self.node_mut(addr.id).item_mut(addr.offset).unwrap();
-			std::mem::swap(&mut value, item.maybe_uninit_value_mut());
-			let (opt_new_value, result) = action(value.assume_init());
-			match opt_new_value {
-				Some(new_value) => {
-					let mut new_value = MaybeUninit::new(new_value);
-					std::mem::swap(&mut new_value, item.maybe_uninit_value_mut());
-				}
-				None => {
-					let (item, _) = self.remove_at(addr).unwrap();
-					// item's value is NOT initialized here.
-					// It must not be dropped.
-					item.forget_value()
-				}
-			}
-
-			result
-		}
-	}
-
 	#[inline]
-	fn rebalance(&mut self, mut id: usize, mut addr: Address) -> Address {
+	fn rebalance(&mut self, mut id: I, mut addr: Address<I>) -> Address<I> {
 		let mut balance = self.node(id).balance();
 
 		loop {
@@ -924,9 +826,10 @@ where
 					let (median_offset, median, right_node) = self.node_mut(id).split();
 					let right_id = self.allocate_node(right_node);
 
-					match self.node(id).parent() {
+					let x = self.node(id).parent();
+					match x {
 						Some(parent_id) => {
-							let parent = self.node_mut(parent_id);
+							let mut parent = self.node_mut(parent_id);
 							let offset = parent.child_index(id).unwrap().into();
 							parent.insert(offset, median, Some(right_id));
 
@@ -989,7 +892,8 @@ where
 					};
 				}
 				Balance::Underflow(is_empty) => {
-					match self.node(id).parent() {
+					let x = self.node(id).parent();
+					match x {
 						Some(parent_id) => {
 							let index = self.node(parent_id).child_index(id).unwrap();
 							// An underflow append in the child node.
@@ -1012,12 +916,13 @@ where
 						None => {
 							// if root is empty.
 							if is_empty {
-								self.root = self.node(id).child_id_opt(0);
+								let new_root = self.node(id).child_id_opt(0);
+								self.root = new_root;
 
 								// update root's parent and addr.
 								match self.root {
 									Some(root_id) => {
-										let root = self.node_mut(root_id);
+										let mut root = self.node_mut(root_id);
 										root.set_parent(None);
 
 										if addr.id == id {
@@ -1041,8 +946,87 @@ where
 		addr
 	}
 
+	//noinspection DuplicatedCode
+	fn update_in<T>(&mut self, mut id: I, key: K, action: impl FnOnce(Option<V>) -> (Option<V>, T)) -> T where K: Ord {
+		loop {
+			let x = self.node(id).offset_of(&key);
+			match x {
+				Ok(offset) => unsafe {
+					let mut value = MaybeUninit::uninit();
+					let (opt_new_value_is_none, result) = {
+						let mut node = self.node_mut(id);
+						let item = node.item_mut(offset).unwrap();
+						std::mem::swap(&mut value, item.maybe_uninit_value_mut());
+						let (opt_new_value, result) = action(Some(value.assume_init()));
+						(match opt_new_value {
+							None => true,
+							Some(new_value) => {
+								let mut new_value = MaybeUninit::new(new_value);
+								std::mem::swap(&mut new_value, item.maybe_uninit_value_mut());
+								false
+							}
+						}, result)
+					};
+					if opt_new_value_is_none {
+						let (item, _) = self.remove_at(Address::new(id, offset)).unwrap();
+						// item's value is NOT initialized here.
+						// It must not be dropped.
+						item.forget_value()
+					}
+
+					return result;
+				},
+				Err((offset, None)) => {
+					let (opt_new_value, result) = action(None);
+					if let Some(new_value) = opt_new_value {
+						let leaf_addr = Address::new(id, offset.into());
+						self.insert_exactly_at(leaf_addr, Item::new(key, new_value), None);
+					}
+
+					return result;
+				}
+				Err((_, Some(child_id))) => {
+					id = child_id;
+				}
+			}
+		}
+	}
+
+	//noinspection DuplicatedCode
+	fn update_at<T>(
+		&mut self,
+		addr: Address<I>,
+		action: impl FnOnce(V) -> (Option<V>, T)
+	) -> T where K: Ord {
+		unsafe {
+			let mut value = MaybeUninit::uninit();
+			let (opt_new_value_is_none, result) = {
+				let mut node = self.node_mut(addr.id);
+				let item = node.item_mut(addr.offset).unwrap();
+				std::mem::swap(&mut value, item.maybe_uninit_value_mut());
+				let (opt_new_value, result) = action(value.assume_init());
+				(match opt_new_value {
+					None => true,
+					Some(new_value) => {
+						let mut new_value = MaybeUninit::new(new_value);
+						std::mem::swap(&mut new_value, item.maybe_uninit_value_mut());
+						false
+					}
+				}, result)
+			};
+			if opt_new_value_is_none {
+				let (item, _) = self.remove_at(addr).unwrap();
+				// item's value is NOT initialized here.
+				// It must not be dropped.
+				item.forget_value()
+			}
+
+			result
+		}
+	}
+
 	#[inline]
-	fn remove_rightmost_leaf_of(&mut self, mut id: usize) -> (Item<K, V>, usize) {
+	fn remove_rightmost_leaf_of(&mut self, mut id: I) -> (Item<K, V>, I) {
 		loop {
 			match self.node_mut(id).remove_rightmost_leaf() {
 				Ok(result) => return (result, id),
@@ -1054,9 +1038,9 @@ where
 	}
 
 	#[inline]
-	fn allocate_node(&mut self, node: Node<K, V>) -> usize {
-		let mut children: SmallVec<[usize; M]> = SmallVec::new();
-		let id = self.nodes.insert(node);
+	fn allocate_node(&mut self, node: Node<K, V, I>) -> I {
+		let mut children: SmallVec<[I; M]> = SmallVec::new();
+		let id = self.store.insert(node);
 
 		for child_id in self.node(id).children() {
 			children.push(child_id)
@@ -1070,7 +1054,7 @@ where
 	}
 
 	#[inline]
-	fn release_node(&mut self, id: usize) -> Node<K, V> {
-		self.nodes.remove(id).unwrap()
+	fn release_node(&mut self, id: I) -> Node<K, V, I> {
+		self.store.remove(id).unwrap()
 	}
 }

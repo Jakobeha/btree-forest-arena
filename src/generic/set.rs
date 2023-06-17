@@ -1,5 +1,4 @@
-use crate::generic::{map, node::Node, BTreeMap};
-use cc_traits::{SimpleCollectionMut, SimpleCollectionRef, Slab, SlabMut};
+use crate::generic::{map, node::Node, BTreeMap, SlabView, Slab};
 use std::{
 	borrow::Borrow,
 	cmp::Ordering,
@@ -7,6 +6,9 @@ use std::{
 	iter::{DoubleEndedIterator, ExactSizeIterator, FromIterator, FusedIterator, Peekable},
 	ops::RangeBounds,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::ops::Deref;
+use crate::generic::slab::{Index, OwnedSlab, Ref};
 
 /// A set based on a B-Tree.
 ///
@@ -16,15 +18,84 @@ use std::{
 /// to any other item, as determined by the [`Ord`] trait, changes while it is in the set. This is
 /// normally only possible through [`Cell`], [`RefCell`], global state, I/O, or unsafe code.
 ///
-/// [`Ord`]: core::cmp::Ord
+/// [`Ord`]: Ord
 /// [`Cell`]: core::cell::Cell
 /// [`RefCell`]: core::cell::RefCell
-pub struct BTreeSet<T, C> {
-	map: BTreeMap<T, (), C>,
+pub struct BTreeSet<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+	map: BTreeMap<T, (), I, C>,
 }
 
-impl<T, C> BTreeSet<T, C> {
-	/// Makes a new, empty `BTreeSet`.
+/// `Deref`-able pointer to an element in a [BTreeSet]
+pub type ElemRef<'a, T, I, C> = <<C as SlabView<Node<T, (), I>>>::Ref<'a, Node<T, (), I>> as Ref<'a, Node<T, (), I>>>::Mapped<T>;
+
+/// `Deref`-able pointer to an element in one of 2 [BTreeSet]s
+pub struct EitherElemRef<
+	'a,
+	T: 'a,
+	I: Index + 'a,
+	J: Index + 'a,
+	C: SlabView<Node<T, (), I>, Index=I> + 'a,
+	D: SlabView<Node<T, (), J>, Index=J> + 'a
+>(_EitherElemRef<'a, T, I, J, C, D>);
+
+pub enum _EitherElemRef<
+	'a,
+	T: 'a,
+	I: Index + 'a,
+	J: Index + 'a,
+	C: SlabView<Node<T, (), I>, Index=I> + 'a,
+	D: SlabView<Node<T, (), J>, Index=J> + 'a
+> {
+	Left(ElemRef<'a, T, I, C>),
+	Right(ElemRef<'a, T, J, D>)
+}
+
+impl<
+	'a,
+	T,
+	I: Index,
+	J: Index,
+	C: SlabView<Node<T, (), I>, Index=I>,
+	D: SlabView<Node<T, (), J>, Index=J>
+> EitherElemRef<'a, T, I, J, C, D> {
+	pub fn left(left: ElemRef<'a, T, I, C>) -> Self {
+		Self(_EitherElemRef::Left(left))
+	}
+
+	pub fn right(right: ElemRef<'a, T, J, D>) -> Self {
+		Self(_EitherElemRef::Right(right))
+	}
+
+	/// Chooses one based on rust's randomized hashing
+	pub fn either(left: ElemRef<'a, T, I, C>, right: ElemRef<'a, T, J, D>) -> Self {
+		let random_like_hash = 0.hash(&mut DefaultHasher::new()) < 1.hash(&mut DefaultHasher::new());
+		match random_like_hash {
+			false => Self::left(left),
+			true => Self::right(right)
+		}
+	}
+}
+
+impl<
+	'a,
+	T,
+	I: Index,
+	J: Index,
+	C: SlabView<Node<T, (), I>, Index=I>,
+	D: SlabView<Node<T, (), J>, Index=J>
+> Deref for EitherElemRef<'a, T, I, J, C, D> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		match &self.0 {
+			_EitherElemRef::Left(left) => &*left,
+			_EitherElemRef::Right(right) => &*right
+		}
+	}
+}
+
+impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
+	/// Makes a new, empty `BTreeSet` in a new allocator.
 	///
 	/// # Example
 	///
@@ -35,11 +106,23 @@ impl<T, C> BTreeSet<T, C> {
 	/// let mut set: BTreeSet<i32> = BTreeSet::new();
 	/// ```
 	#[inline]
-	pub fn new() -> Self
-	where
-		C: Default,
-	{
-		Self::default()
+	pub fn new() -> Self where C: Default {
+		Self { map: BTreeMap::new() }
+	}
+
+	/// Makes a new, empty `BTreeSet` in the given allocator.
+	///
+	/// # Example
+	///
+	/// ```
+	/// # #![allow(unused_mut)]
+	/// use btree_slab::BTreeSet;
+	///
+	/// let mut set: BTreeSet<i32> = BTreeSet::new();
+	/// ```
+	#[inline]
+	pub fn new_in(store: C) -> Self {
+		Self { map: BTreeMap::new_in(store) }
 	}
 
 	/// Returns the number of elements in the set.
@@ -77,7 +160,7 @@ impl<T, C> BTreeSet<T, C> {
 	}
 }
 
-impl<T, C: Default> Default for BTreeSet<T, C> {
+impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Default> Default for BTreeSet<T, I, C> {
 	fn default() -> Self {
 		BTreeSet {
 			map: BTreeMap::default(),
@@ -85,10 +168,7 @@ impl<T, C: Default> Default for BTreeSet<T, C> {
 	}
 }
 
-impl<T, C: Slab<Node<T, ()>>> BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Gets an iterator that visits the values in the `BTreeSet` in ascending order.
 	///
 	/// # Examples
@@ -117,17 +197,14 @@ where
 	/// assert_eq!(set_iter.next(), None);
 	/// ```
 	#[inline]
-	pub fn iter(&self) -> Iter<T, C> {
+	pub fn iter(&self) -> Iter<T, I, C> {
 		Iter {
 			inner: self.map.keys(),
 		}
 	}
 }
 
-impl<T: Ord, C: Slab<Node<T, ()>>> BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Returns `true` if the set contains a value.
 	///
 	/// The value may be any borrowed form of the set's value type,
@@ -144,11 +221,7 @@ where
 	/// assert_eq!(set.contains(&4), false);
 	/// ```
 	#[inline]
-	pub fn contains<Q: ?Sized>(&self, value: &Q) -> bool
-	where
-		T: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn contains<Q: Ord + ?Sized>(&self, value: &Q) -> bool where T: Borrow<Q> {
 		self.map.contains_key(value)
 	}
 
@@ -168,13 +241,9 @@ where
 	/// assert_eq!(set.get(&4), None);
 	/// ```
 	#[inline]
-	pub fn get<Q: ?Sized>(&self, value: &Q) -> Option<&T>
-	where
-		T: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn get<Q: Ord + ?Sized>(&self, value: &Q) -> Option<ElemRef<'_, T, I, C>> where T: Borrow<Q> {
 		match self.map.get_key_value(value) {
-			Some((t, ())) => Some(t),
+			Some(kv) => Some(kv.into_key_ref()),
 			None => None,
 		}
 	}
@@ -202,12 +271,7 @@ where
 	/// assert_eq!(Some(&5), set.range(4..).next());
 	/// ```
 	#[inline]
-	pub fn range<K: ?Sized, R>(&self, range: R) -> Range<T, C>
-	where
-		K: Ord,
-		T: Borrow<K>,
-		R: RangeBounds<K>,
-	{
+	pub fn range<K: Ord + ?Sized>(&self, range: impl RangeBounds<K>) -> Range<T, I, C> where T: Borrow<K> {
 		Range {
 			inner: self.map.range(range),
 		}
@@ -228,17 +292,14 @@ where
 	/// let mut b = BTreeSet::new();
 	/// b.insert(2);
 	///
-	/// let union: Vec<_> = a.union(&b).cloned().collect();
+	/// let union: Vec<_> = a.union(&b).map(|x| *x).collect();
 	/// assert_eq!(union, [1, 2]);
 	/// ```
 	#[inline]
-	pub fn union<'a, D: Slab<Node<T, ()>>>(
+	pub fn union<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
 		&'a self,
-		other: &'a BTreeSet<T, D>,
-	) -> Union<'a, T, C, D>
-	where
-		D: SimpleCollectionRef,
-	{
+		other: &'a BTreeSet<T, J, D>,
+	) -> Union<'a, T, I, J, C, D> {
 		Union {
 			it1: self.iter().peekable(),
 			it2: other.iter().peekable(),
@@ -266,13 +327,10 @@ where
 	/// assert_eq!(intersection, [2]);
 	/// ```
 	#[inline]
-	pub fn intersection<'a, D: Slab<Node<T, ()>>>(
+	pub fn intersection<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
 		&'a self,
-		other: &'a BTreeSet<T, D>,
-	) -> Intersection<'a, T, C, D>
-	where
-		D: SimpleCollectionRef,
-	{
+		other: &'a BTreeSet<T, J, D>,
+	) -> Intersection<'a, T, I, J, C, D> {
 		Intersection {
 			it1: self.iter(),
 			it2: other.iter().peekable(),
@@ -300,13 +358,10 @@ where
 	/// assert_eq!(diff, [1]);
 	/// ```
 	#[inline]
-	pub fn difference<'a, D: Slab<Node<T, ()>>>(
+	pub fn difference<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
 		&'a self,
-		other: &'a BTreeSet<T, D>,
-	) -> Difference<'a, T, C, D>
-	where
-		D: SimpleCollectionRef,
-	{
+		other: &'a BTreeSet<T, J, D>,
+	) -> Difference<'a, T, I, J, C, D> {
 		Difference {
 			it1: self.iter(),
 			it2: other.iter().peekable(),
@@ -330,17 +385,14 @@ where
 	/// b.insert(2);
 	/// b.insert(3);
 	///
-	/// let sym_diff: Vec<_> = a.symmetric_difference(&b).cloned().collect();
+	/// let sym_diff: Vec<_> = a.symmetric_difference(&b).map(|x| *x).collect();
 	/// assert_eq!(sym_diff, [1, 3]);
 	/// ```
 	#[inline]
-	pub fn symmetric_difference<'a, D: Slab<Node<T, ()>>>(
+	pub fn symmetric_difference<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
 		&'a self,
-		other: &'a BTreeSet<T, D>,
-	) -> SymmetricDifference<'a, T, C, D>
-	where
-		D: SimpleCollectionRef,
-	{
+		other: &'a BTreeSet<T, J, D>,
+	) -> SymmetricDifference<'a, T, I, J, C, D> {
 		SymmetricDifference {
 			it1: self.iter().peekable(),
 			it2: other.iter().peekable(),
@@ -365,10 +417,10 @@ where
 	/// assert_eq!(a.is_disjoint(&b), false);
 	/// ```
 	#[inline]
-	pub fn is_disjoint<D: Slab<Node<T, ()>>>(&self, other: &BTreeSet<T, D>) -> bool
-	where
-		D: SimpleCollectionRef,
-	{
+	pub fn is_disjoint<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+		&self,
+		other: &BTreeSet<T, J, D>
+	) -> bool where T: Ord {
 		self.intersection(other).next().is_none()
 	}
 
@@ -390,10 +442,7 @@ where
 	/// assert_eq!(set.is_subset(&sup), false);
 	/// ```
 	#[inline]
-	pub fn is_subset<D: Slab<Node<T, ()>>>(&self, other: &BTreeSet<T, D>) -> bool
-	where
-		D: SimpleCollectionRef,
-	{
+	pub fn is_subset<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(&self, other: &BTreeSet<T, J, D>) -> bool where T: Ord {
 		self.difference(other).next().is_none()
 	}
 
@@ -418,10 +467,10 @@ where
 	/// assert_eq!(set.is_superset(&sub), true);
 	/// ```
 	#[inline]
-	pub fn is_superset<D: Slab<Node<T, ()>>>(&self, other: &BTreeSet<T, D>) -> bool
-	where
-		D: SimpleCollectionRef,
-	{
+	pub fn is_superset<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+		&self,
+		other: &BTreeSet<T, J, D>
+	) -> bool where T: Ord {
 		other.is_subset(self)
 	}
 
@@ -441,8 +490,8 @@ where
 	/// assert_eq!(map.first(), Some(&1));
 	/// ```
 	#[inline]
-	pub fn first(&self) -> Option<&T> {
-		self.map.first_key_value().map(|(k, _)| k)
+	pub fn first(&self) -> Option<ElemRef<'_, T, I, C>> {
+		self.map.first_key_value().map(|kv| kv.into_key_ref())
 	}
 
 	/// Returns a reference to the last value in the set, if any.
@@ -461,16 +510,12 @@ where
 	/// assert_eq!(map.last(), Some(&2));
 	/// ```
 	#[inline]
-	pub fn last(&self) -> Option<&T> {
-		self.map.last_key_value().map(|(k, _)| k)
+	pub fn last(&self) -> Option<ElemRef<'_, T, I, C>> {
+		self.map.last_key_value().map(|kv| kv.into_key_ref())
 	}
 }
 
-impl<T: Ord, C: SlabMut<Node<T, ()>>> BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Clears the set, removing all values.
 	///
 	/// # Examples
@@ -484,10 +529,7 @@ where
 	/// assert!(v.is_empty());
 	/// ```
 	#[inline]
-	pub fn clear(&mut self)
-	where
-		C: cc_traits::Clear,
-	{
+	pub fn clear(&mut self) {
 		self.map.clear()
 	}
 
@@ -512,10 +554,7 @@ where
 	/// assert_eq!(set.len(), 1);
 	/// ```
 	#[inline]
-	pub fn insert(&mut self, element: T) -> bool
-	where
-		T: Ord,
-	{
+	pub fn insert(&mut self, element: T) -> bool where T: Ord {
 		self.map.insert(element, ()).is_none()
 	}
 
@@ -538,11 +577,7 @@ where
 	/// assert_eq!(set.remove(&2), false);
 	/// ```
 	#[inline]
-	pub fn remove<Q: ?Sized>(&mut self, value: &Q) -> bool
-	where
-		T: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn remove<Q: Ord + ?Sized>(&mut self, value: &Q) -> bool where T: Borrow<Q> {
 		self.map.remove(value).is_some()
 	}
 
@@ -562,12 +597,8 @@ where
 	/// assert_eq!(set.take(&2), None);
 	/// ```
 	#[inline]
-	pub fn take<Q: ?Sized>(&mut self, value: &Q) -> Option<T>
-	where
-		T: Borrow<Q>,
-		Q: Ord,
-	{
-		self.map.take(value).map(|(t, _)| t)
+	pub fn take<Q: Ord + ?Sized>(&mut self, value: &Q) -> Option<T> where T: Borrow<Q> {
+		self.map.remove_entry(value).map(|(t, _)| t)
 	}
 
 	/// Adds a value to the set, replacing the existing value, if any, that is equal to the given
@@ -586,7 +617,7 @@ where
 	/// assert_eq!(set.get(&[][..]).unwrap().capacity(), 10);
 	/// ```
 	#[inline]
-	pub fn replace(&mut self, value: T) -> Option<T> {
+	pub fn replace(&mut self, value: T) -> Option<T> where T: Ord {
 		self.map.replace(value, ()).map(|(t, ())| t)
 	}
 
@@ -648,47 +679,8 @@ where
 	/// assert!(set.iter().eq([2, 4, 6].iter()));
 	/// ```
 	#[inline]
-	pub fn retain<F>(&mut self, mut f: F)
-	where
-		F: FnMut(&T) -> bool,
-	{
+	pub fn retain(&mut self, mut f: impl FnMut(&T) -> bool) {
 		self.drain_filter(|v| !f(v));
-	}
-
-	/// Moves all elements from `other` into `Self`, leaving `other` empty.
-	///
-	/// # Example
-	///
-	/// ```
-	/// use btree_slab::BTreeSet;
-	///
-	/// let mut a = BTreeSet::new();
-	/// a.insert(1);
-	/// a.insert(2);
-	/// a.insert(3);
-	///
-	/// let mut b = BTreeSet::new();
-	/// b.insert(3);
-	/// b.insert(4);
-	/// b.insert(5);
-	///
-	/// a.append(&mut b);
-	///
-	/// assert_eq!(a.len(), 5);
-	/// assert_eq!(b.len(), 0);
-	///
-	/// assert!(a.contains(&1));
-	/// assert!(a.contains(&2));
-	/// assert!(a.contains(&3));
-	/// assert!(a.contains(&4));
-	/// assert!(a.contains(&5));
-	/// ```
-	#[inline]
-	pub fn append(&mut self, other: &mut Self)
-	where
-		C: Default,
-	{
-		self.map.append(&mut other.map);
 	}
 
 	/// Creates an iterator which uses a closure to determine if a value should be removed.
@@ -718,15 +710,88 @@ where
 	/// assert_eq!(odds.into_iter().collect::<Vec<_>>(), vec![1, 3, 5, 7]);
 	/// ```
 	#[inline]
-	pub fn drain_filter<'a, F>(&'a mut self, pred: F) -> DrainFilter<'a, T, C, F>
-	where
-		F: 'a + FnMut(&T) -> bool,
-	{
+	pub fn drain_filter<'a, F: 'a + FnMut(&T) -> bool>(
+		&'a mut self,
+		pred: F
+	) -> DrainFilter<'a, T, I, C, F> {
 		DrainFilter::new(self, pred)
 	}
 }
 
-impl<T: Clone, C: Clone> Clone for BTreeSet<T, C> {
+impl<T: Ord, I: Index, C: OwnedSlab<Node<T, (), I>, Index=I> + Default> BTreeSet<T, I, C> {
+	/// Moves all elements from `other` into `Self`, leaving `other` empty and with a new store.
+	///
+	/// # Example
+	///
+	/// ```
+	/// use btree_slab::BTreeSet;
+	///
+	/// let mut a = BTreeSet::new();
+	/// a.insert(1);
+	/// a.insert(2);
+	/// a.insert(3);
+	///
+	/// let mut b = BTreeSet::new();
+	/// b.insert(3);
+	/// b.insert(4);
+	/// b.insert(5);
+	///
+	/// a.append1(&mut b);
+	///
+	/// assert_eq!(a.len(), 5);
+	/// assert_eq!(b.len(), 0);
+	///
+	/// assert!(a.contains(&1));
+	/// assert!(a.contains(&2));
+	/// assert!(a.contains(&3));
+	/// assert!(a.contains(&4));
+	/// assert!(a.contains(&5));
+	/// ```
+	#[inline]
+	pub fn append1(&mut self, other: &mut Self) {
+		self.map.append1(&mut other.map);
+	}
+}
+
+impl<'a, T: Ord, I: Index, C> BTreeSet<T, I, &'a C> where &'a C: Slab<Node<T, (), I>, Index=I> {
+	/// Asserts that `self` and `other` have the same store. Then, moves all elements from `other`
+	/// into `Self`, leaving `other` empty.
+	///
+	/// # Example
+	///
+	/// ```
+	/// use btree_slab::{SharingBTreeSet, shareable_slab::ShareableSlab};
+	///
+	/// let data = ShareableSlab::new();
+	///
+	/// let mut a = SharingBTreeSet::new_in(&data);
+	/// a.insert(1);
+	/// a.insert(2);
+	/// a.insert(3);
+	///
+	/// let mut b = SharingBTreeSet::new_in(&data);
+	/// b.insert(3);
+	/// b.insert(4);
+	/// b.insert(5);
+	///
+	/// a.append2(&mut b);
+	///
+	/// assert_eq!(a.len(), 5);
+	/// assert_eq!(b.len(), 0);
+	///
+	/// assert!(a.contains(&1));
+	/// assert!(a.contains(&2));
+	/// assert!(a.contains(&3));
+	/// assert!(a.contains(&4));
+	/// assert!(a.contains(&5));
+	/// ```
+	#[inline]
+	pub fn append2(&mut self, other: &mut Self) {
+		self.map.append2(&mut other.map);
+	}
+}
+
+impl<T: Clone, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Clone> Clone for BTreeSet<T, I, C> {
 	#[inline]
 	fn clone(&self) -> Self {
 		BTreeSet {
@@ -740,222 +805,178 @@ impl<T: Clone, C: Clone> Clone for BTreeSet<T, C> {
 	}
 }
 
-impl<T: Ord, C: SlabMut<Node<T, ()>> + Default> FromIterator<T> for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J> + Default> FromIterator<T> for BTreeSet<T, J, C> {
 	#[inline]
-	fn from_iter<I>(iter: I) -> Self
-	where
-		I: IntoIterator<Item = T>,
-	{
+	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
 		let mut set = BTreeSet::new();
 		set.extend(iter);
 		set
 	}
 }
 
-impl<T, C: SlabMut<Node<T, ()>>> IntoIterator for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for BTreeSet<T, I, C> {
 	type Item = T;
-	type IntoIter = IntoIter<T, C>;
+	type IntoIter = IntoIter<T, I, C>;
 
 	#[inline]
-	fn into_iter(self) -> IntoIter<T, C> {
+	fn into_iter(self) -> IntoIter<T, I, C> {
 		IntoIter {
 			inner: self.map.into_keys(),
 		}
 	}
 }
 
-impl<'a, T, C: SlabMut<Node<T, ()>>> IntoIterator for &'a BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-{
-	type Item = &'a T;
-	type IntoIter = Iter<'a, T, C>;
+impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for &'a BTreeSet<T, I, C> {
+	type Item = ElemRef<'a, T, I, C>;
+	type IntoIter = Iter<'a, T, I, C>;
 
 	#[inline]
-	fn into_iter(self) -> Iter<'a, T, C> {
+	fn into_iter(self) -> Iter<'a, T, I, C> {
 		self.iter()
 	}
 }
 
-impl<T: Ord, C: SlabMut<Node<T, ()>>> Extend<T> for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J>> Extend<T> for BTreeSet<T, J, C> {
 	#[inline]
-	fn extend<I>(&mut self, iter: I)
-	where
-		I: IntoIterator<Item = T>,
-	{
+	fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
 		for t in iter {
 			self.insert(t);
 		}
 	}
 }
 
-impl<'a, T: 'a + Ord + Copy, C: SlabMut<Node<T, ()>>> Extend<&'a T> for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, T: 'a + Ord + Copy, J: Index, C: Slab<Node<T, (), J>, Index=J>> Extend<&'a T> for BTreeSet<T, J, C> {
 	#[inline]
-	fn extend<I>(&mut self, iter: I)
-	where
-		I: IntoIterator<Item = &'a T>,
-	{
+	fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
 		self.extend(iter.into_iter().copied())
 	}
 }
 
-impl<T, L: PartialEq<T>, C: Slab<Node<T, ()>>, D: Slab<Node<L, ()>>> PartialEq<BTreeSet<L, D>>
-	for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
+impl<
+	T,
+	L: PartialEq<T>,
+	I: Index,
+	J: Index + PartialEq<I>,
+	C: SlabView<Node<T, (), I>, Index=I>,
+	D: SlabView<Node<L, (), J>, Index=J>
+> PartialEq<BTreeSet<L, J, D>> for BTreeSet<T, I, C> {
 	#[inline]
-	fn eq(&self, other: &BTreeSet<L, D>) -> bool {
+	fn eq(&self, other: &BTreeSet<L, J, D>) -> bool {
 		self.map.eq(&other.map)
 	}
 }
 
-impl<T: Eq, C: Slab<Node<T, ()>>> Eq for BTreeSet<T, C> where C: SimpleCollectionRef {}
+impl<T: Eq, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Eq for BTreeSet<T, I, C> {}
 
-impl<T, L: PartialOrd<T>, C: Slab<Node<T, ()>>, D: Slab<Node<L, ()>>> PartialOrd<BTreeSet<L, D>>
-	for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
+impl<
+	T,
+	L: PartialOrd<T>,
+	I: Index,
+	J: Index + PartialOrd<I>,
+	C: SlabView<Node<T, (), I>, Index=I>,
+	D: SlabView<Node<L, (), J>, Index=J>
+> PartialOrd<BTreeSet<L, J, D>>
+	for BTreeSet<T, I, C> {
 	#[inline]
-	fn partial_cmp(&self, other: &BTreeSet<L, D>) -> Option<Ordering> {
+	fn partial_cmp(&self, other: &BTreeSet<L, J, D>) -> Option<Ordering> {
 		self.map.partial_cmp(&other.map)
 	}
 }
 
-impl<T: Ord, C: Slab<Node<T, ()>>> Ord for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<T: Ord, I: Index + Ord, C: SlabView<Node<T, (), I>, Index=I>> Ord for BTreeSet<T, I, C> {
 	#[inline]
-	fn cmp(&self, other: &BTreeSet<T, C>) -> Ordering {
+	fn cmp(&self, other: &BTreeSet<T, I, C>) -> Ordering {
 		self.map.cmp(&other.map)
 	}
 }
 
-impl<T: Hash, C: Slab<Node<T, ()>>> Hash for BTreeSet<T, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<T: Hash, I: Index + Hash, C: SlabView<Node<T, (), I>, Index=I>> Hash for BTreeSet<T, I, C> {
 	#[inline]
 	fn hash<H: Hasher>(&self, h: &mut H) {
 		self.map.hash(h)
 	}
 }
 
-pub struct Iter<'a, T, C> {
-	inner: map::Keys<'a, T, (), C>,
+pub struct Iter<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+	inner: map::Keys<'a, T, (), I, C>,
 }
 
-impl<'a, T, C: Slab<Node<T, ()>>> Iterator for Iter<'a, T, C>
-where
-	C: SimpleCollectionRef,
-{
-	type Item = &'a T;
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Iter<'a, T, I, C> {
+	type Item = ElemRef<'a, T, I, C>;
+
+	#[inline]
+	fn next(&mut self) -> Option<ElemRef<'a, T, I, C>> {
+		self.inner.next()
+	}
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		self.inner.size_hint()
 	}
-
-	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
-		self.inner.next()
-	}
 }
 
-impl<'a, T, C: Slab<Node<T, ()>>> DoubleEndedIterator for Iter<'a, T, C>
-where
-	C: SimpleCollectionRef,
-{
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Iter<'a, T, I, C> {
 	#[inline]
-	fn next_back(&mut self) -> Option<&'a T> {
+	fn next_back(&mut self) -> Option<ElemRef<'a, T, I, C>> {
 		self.inner.next_back()
 	}
 }
 
-impl<'a, T, C: Slab<Node<T, ()>>> FusedIterator for Iter<'a, T, C> where C: SimpleCollectionRef {}
-impl<'a, T, C: Slab<Node<T, ()>>> ExactSizeIterator for Iter<'a, T, C> where C: SimpleCollectionRef {}
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> FusedIterator for Iter<'a, T, I, C> {}
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> ExactSizeIterator for Iter<'a, T, I, C> {}
 
-pub struct IntoIter<T, C> {
-	inner: map::IntoKeys<T, (), C>,
+pub struct IntoIter<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+	inner: map::IntoKeys<T, (), I, C>,
 }
 
-impl<T, C: SlabMut<Node<T, ()>>> Iterator for IntoIter<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> Iterator for IntoIter<T, I, C> {
 	type Item = T;
-
-	#[inline]
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		self.inner.size_hint()
-	}
 
 	#[inline]
 	fn next(&mut self) -> Option<T> {
 		self.inner.next()
 	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		self.inner.size_hint()
+	}
 }
 
-impl<T, C: SlabMut<Node<T, ()>>> DoubleEndedIterator for IntoIter<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> DoubleEndedIterator for IntoIter<T, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<T> {
 		self.inner.next_back()
 	}
 }
 
-impl<T, C: SlabMut<Node<T, ()>>> FusedIterator for IntoIter<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
-}
-impl<T, C: SlabMut<Node<T, ()>>> ExactSizeIterator for IntoIter<T, C>
-where
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> FusedIterator for IntoIter<T, I, C> {}
+impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> ExactSizeIterator for IntoIter<T, I, C> {}
+
+pub struct Union<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+	it1: Peekable<Iter<'a, T, I, C>>,
+	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-pub struct Union<'a, T, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	it1: Peekable<Iter<'a, T, C>>,
-	it2: Peekable<Iter<'a, T, D>>,
-}
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Union<'a, T, I, J, C, D> {
+	type Item = EitherElemRef<'a, T, I, J, C, D>;
 
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> Iterator for Union<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	type Item = &'a T;
+	#[inline]
+	fn next(&mut self) -> Option<EitherElemRef<'a, T, I, J, C, D>> {
+		match (self.it1.peek(), self.it2.peek()) {
+			(Some(v1), Some(v2)) => Some(match v1.cmp(v2) {
+				Ordering::Equal => EitherElemRef::either(
+					self.it1.next().unwrap(),
+					self.it2.next().unwrap()
+				),
+				Ordering::Less => EitherElemRef::left(self.it1.next().unwrap()),
+				Ordering::Greater => EitherElemRef::right(self.it2.next().unwrap()),
+			}),
+			(Some(_), None) => Some(EitherElemRef::left(self.it1.next().unwrap())),
+			(None, Some(_)) => Some(EitherElemRef::right(self.it2.next().unwrap())),
+			(None, None) => None,
+		}
+	}
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -964,57 +985,20 @@ where
 
 		(std::cmp::min(len1, len2), Some(std::cmp::max(len1, len2)))
 	}
-
-	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
-		match (self.it1.peek(), self.it2.peek()) {
-			(Some(v1), Some(v2)) => match v1.cmp(v2) {
-				Ordering::Equal => {
-					self.it1.next();
-					self.it2.next()
-				}
-				Ordering::Less => self.it1.next(),
-				Ordering::Greater => self.it2.next(),
-			},
-			(Some(_), None) => self.it1.next(),
-			(None, Some(_)) => self.it2.next(),
-			(None, None) => None,
-		}
-	}
 }
 
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> FusedIterator for Union<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator for Union<'a, T, I, J, C, D> {}
+
+pub struct Intersection<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+	it1: Iter<'a, T, I, C>,
+	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-pub struct Intersection<'a, T, C, D: Slab<Node<T, ()>>>
-where
-	D: SimpleCollectionRef,
-{
-	it1: Iter<'a, T, C>,
-	it2: Peekable<Iter<'a, T, D>>,
-}
-
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> Iterator for Intersection<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	type Item = &'a T;
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Intersection<'a, T, I, J, C, D> {
+	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len1 = self.it1.len();
-		let len2 = self.it2.len();
-
-		(0, Some(std::cmp::min(len1, len2)))
-	}
-
-	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
+	fn next(&mut self) -> Option<ElemRef<'a, T, I, C>> {
 		loop {
 			match self.it1.next() {
 				Some(value) => {
@@ -1039,41 +1023,29 @@ where
 			}
 		}
 	}
-}
-
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> FusedIterator
-	for Intersection<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-}
-
-pub struct Difference<'a, T, C, D: Slab<Node<T, ()>>>
-where
-	D: SimpleCollectionRef,
-{
-	it1: Iter<'a, T, C>,
-	it2: Peekable<Iter<'a, T, D>>,
-}
-
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> Iterator for Difference<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	type Item = &'a T;
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len1 = self.it1.len();
 		let len2 = self.it2.len();
 
-		(len1.saturating_sub(len2), Some(self.it1.len()))
+		(0, Some(std::cmp::min(len1, len2)))
 	}
+}
+
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+	for Intersection<'a, T, I, J, C, D> {}
+
+pub struct Difference<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+	it1: Iter<'a, T, I, C>,
+	it2: Peekable<Iter<'a, T, J, D>>,
+}
+
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Difference<'a, T, I, J, C, D> {
+	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
+	fn next(&mut self) -> Option<ElemRef<'a, T, I, C>> {
 		loop {
 			match self.it1.next() {
 				Some(value) => {
@@ -1098,32 +1070,46 @@ where
 			}
 		}
 	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len1 = self.it1.len();
+		let len2 = self.it2.len();
+
+		(len1.saturating_sub(len2), Some(self.it1.len()))
+	}
 }
 
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> FusedIterator
-	for Difference<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+	for Difference<'a, T, I, J, C, D> {}
+
+pub struct SymmetricDifference<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+	it1: Peekable<Iter<'a, T, I, C>>,
+	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-pub struct SymmetricDifference<'a, T, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	it1: Peekable<Iter<'a, T, C>>,
-	it2: Peekable<Iter<'a, T, D>>,
-}
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator
+	for SymmetricDifference<'a, T, I, J, C, D> {
+	type Item = EitherElemRef<'a, T, I, J, C, D>;
 
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> Iterator
-	for SymmetricDifference<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-	type Item = &'a T;
+	#[inline]
+	fn next(&mut self) -> Option<EitherElemRef<'a, T, I, J, C, D>> {
+		loop {
+			match (self.it1.peek(), self.it2.peek()) {
+				(Some(v1), Some(v2)) => match v1.cmp(v2) {
+					Ordering::Equal => {
+						self.it1.next().unwrap();
+						self.it2.next().unwrap();
+					}
+					Ordering::Less => break Some(EitherElemRef::left(self.it1.next().unwrap())),
+					Ordering::Greater => break Some(EitherElemRef::right(self.it2.next().unwrap())),
+				},
+				(Some(_), None) => break Some(EitherElemRef::left(self.it1.next().unwrap())),
+				(None, Some(_)) => break Some(EitherElemRef::right(self.it2.next().unwrap())),
+				(None, None) => break None,
+			}
+		}
+	}
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1132,54 +1118,19 @@ where
 
 		(0, len1.checked_add(len2))
 	}
-
-	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
-		loop {
-			match (self.it1.peek(), self.it2.peek()) {
-				(Some(v1), Some(v2)) => match v1.cmp(v2) {
-					Ordering::Equal => {
-						self.it1.next();
-						self.it2.next();
-					}
-					Ordering::Less => break self.it1.next(),
-					Ordering::Greater => break self.it2.next(),
-				},
-				(Some(_), None) => break self.it1.next(),
-				(None, Some(_)) => break self.it2.next(),
-				(None, None) => break None,
-			}
-		}
-	}
 }
 
-impl<'a, T: Ord, C: Slab<Node<T, ()>>, D: Slab<Node<T, ()>>> FusedIterator
-	for SymmetricDifference<'a, T, C, D>
-where
-	C: SimpleCollectionRef,
-	D: SimpleCollectionRef,
-{
-}
+impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+	for SymmetricDifference<'a, T, I, J, C, D> {}
 
-pub struct DrainFilter<'a, T, C: SlabMut<Node<T, ()>>, F>
-where
-	F: FnMut(&T) -> bool,
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+pub struct DrainFilter<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> {
 	pred: F,
-
-	inner: map::DrainFilterInner<'a, T, (), C>,
+	inner: map::DrainFilterInner<'a, T, (), I, C>,
 }
 
-impl<'a, T: 'a, C: SlabMut<Node<T, ()>>, F> DrainFilter<'a, T, C, F>
-where
-	F: FnMut(&T) -> bool,
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, T: 'a, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> DrainFilter<'a, T, I, C, F> {
 	#[inline]
-	pub fn new(set: &'a mut BTreeSet<T, C>, pred: F) -> Self {
+	pub fn new(set: &'a mut BTreeSet<T, I, C>, pred: F) -> Self {
 		DrainFilter {
 			pred,
 			inner: map::DrainFilterInner::new(&mut set.map),
@@ -1187,40 +1138,24 @@ where
 	}
 }
 
-impl<'a, T, C: SlabMut<Node<T, ()>>, F> FusedIterator for DrainFilter<'a, T, C, F>
-where
-	F: FnMut(&T) -> bool,
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
-}
+impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> FusedIterator for DrainFilter<'a, T, I, C, F> {}
 
-impl<'a, T, C: SlabMut<Node<T, ()>>, F> Iterator for DrainFilter<'a, T, C, F>
-where
-	F: FnMut(&T) -> bool,
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, I, C, F> {
 	type Item = T;
-
-	#[inline]
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		self.inner.size_hint()
-	}
 
 	#[inline]
 	fn next(&mut self) -> Option<T> {
 		let pred = &mut self.pred;
 		self.inner.next(&mut |t, _| (*pred)(t)).map(|(t, ())| t)
 	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		self.inner.size_hint()
+	}
 }
 
-impl<'a, T, C: SlabMut<Node<T, ()>>, F> Drop for DrainFilter<'a, T, C, F>
-where
-	F: FnMut(&T) -> bool,
-	C: SimpleCollectionRef,
-	C: SimpleCollectionMut,
-{
+impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Drop for DrainFilter<'a, T, I, C, F> {
 	fn drop(&mut self) {
 		loop {
 			if self.next().is_none() {
@@ -1230,35 +1165,29 @@ where
 	}
 }
 
-pub struct Range<'a, T, C> {
-	inner: map::Range<'a, T, (), C>,
+pub struct Range<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+	inner: map::Range<'a, T, (), I, C>,
 }
 
-impl<'a, T, C: Slab<Node<T, ()>>> Iterator for Range<'a, T, C>
-where
-	C: SimpleCollectionRef,
-{
-	type Item = &'a T;
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Range<'a, T, I, C> {
+	type Item = ElemRef<'a, T, I, C>;
+
+	#[inline]
+	fn next(&mut self) -> Option<ElemRef<'a, T, I, C>> {
+		self.inner.next().map(|kv| kv.into_key_ref())
+	}
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		self.inner.size_hint()
 	}
+}
 
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Range<'a, T, I, C> {
 	#[inline]
-	fn next(&mut self) -> Option<&'a T> {
-		self.inner.next().map(|(k, ())| k)
+	fn next_back(&mut self) -> Option<ElemRef<'a, T, I, C>> {
+		self.inner.next_back().map(|kv| kv.into_key_ref())
 	}
 }
 
-impl<'a, T, C: Slab<Node<T, ()>>> DoubleEndedIterator for Range<'a, T, C>
-where
-	C: SimpleCollectionRef,
-{
-	#[inline]
-	fn next_back(&mut self) -> Option<&'a T> {
-		self.inner.next_back().map(|(k, ())| k)
-	}
-}
-
-impl<'a, T, C: Slab<Node<T, ()>>> FusedIterator for Range<'a, T, C> where C: SimpleCollectionRef {}
+impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> FusedIterator for Range<'a, T, I, C> {}

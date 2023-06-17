@@ -7,28 +7,30 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::borrow::Borrow;
+use crate::generic::slab::Index;
 
 #[derive(Clone)]
-pub struct Leaf<K, V> {
-	parent: usize,
+pub struct Leaf<K, V, I: Index> {
+	parent: I,
 	items: SmallVec<[Item<K, V>; M + 1]>,
 }
 
-impl<K, V> Leaf<K, V> {
+impl<K, V, I: Index> Leaf<K, V, I> {
 	#[inline]
-	pub fn new(parent: Option<usize>, item: Item<K, V>) -> Leaf<K, V> {
+	pub fn new(parent: Option<I>, item: Item<K, V>) -> Leaf<K, V, I> {
 		let mut items = SmallVec::new();
 		items.push(item);
 
 		Leaf {
-			parent: parent.unwrap_or(std::usize::MAX),
+			parent: parent.unwrap_or(I::nowhere()),
 			items,
 		}
 	}
 
+	//noinspection DuplicatedCode
 	#[inline]
-	pub fn parent(&self) -> Option<usize> {
-		if self.parent == std::usize::MAX {
+	pub fn parent(&self) -> Option<I> {
+		if self.parent.is_nowhere() {
 			None
 		} else {
 			Some(self.parent)
@@ -36,8 +38,8 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn set_parent(&mut self, p: Option<usize>) {
-		self.parent = p.unwrap_or(std::usize::MAX);
+	pub fn set_parent(&mut self, p: Option<I>) {
+		self.parent = p.unwrap_or(I::nowhere());
 	}
 
 	#[inline]
@@ -56,11 +58,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn get<Q: Ord + ?Sized>(&self, key: &Q) -> Option<&V> where K: Borrow<Q> {
 		match binary_search_min(&self.items, key) {
 			Some(i) => {
 				let item = &self.items[i];
@@ -75,11 +73,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn get_mut<Q: Ord + ?Sized>(&mut self, key: &Q) -> Option<&mut V> where K: Borrow<Q> {
 		match binary_search_min(&self.items, key) {
 			Some(i) => {
 				let item = &mut self.items[i];
@@ -95,11 +89,7 @@ impl<K, V> Leaf<K, V> {
 
 	/// Find the offset of the item matching the given key.
 	#[inline]
-	pub fn offset_of<Q: ?Sized>(&self, key: &Q) -> Result<Offset, Offset>
-	where
-		K: Borrow<Q>,
-		Q: Ord,
-	{
+	pub fn offset_of<Q: Ord + ?Sized>(&self, key: &Q) -> Result<Offset, Offset> where K: Borrow<Q> {
 		match binary_search_min(&self.items, key) {
 			Some(i) => {
 				if self.items[i].key().borrow() == key {
@@ -129,10 +119,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn insert_by_key(&mut self, key: K, mut value: V) -> (Offset, Option<V>)
-	where
-		K: Ord,
-	{
+	pub fn insert_by_key(&mut self, key: K, mut value: V) -> (Offset, Option<V>) where K: Ord {
 		match binary_search_min(&self.items, &key) {
 			Some(i) => {
 				if self.items[i].key() == &key {
@@ -151,7 +138,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn split(&mut self) -> (usize, Item<K, V>, Leaf<K, V>) {
+	pub fn split(&mut self) -> (usize, Item<K, V>, Leaf<K, V, I>) {
 		assert!(self.is_overflowing());
 
 		let median_i = (self.items.len() - 1) / 2;
@@ -171,7 +158,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[inline]
-	pub fn append(&mut self, separator: Item<K, V>, mut other: Leaf<K, V>) -> Offset {
+	pub fn append(&mut self, separator: Item<K, V>, mut other: Leaf<K, V, I>) -> Offset {
 		let offset = self.items.len();
 		self.items.push(separator);
 		self.items.append(&mut other.items);
@@ -231,7 +218,6 @@ impl<K, V> Leaf<K, V> {
 		self.item_count() < M / 2 - 1
 	}
 
-	/// It is assumed that the leaf will not overflow.
 	#[inline]
 	pub fn insert(&mut self, offset: Offset, item: Item<K, V>) {
 		match offset.value() {
@@ -258,7 +244,7 @@ impl<K, V> Leaf<K, V> {
 	/// Write the label of the leaf in the DOT language.
 	///
 	/// Requires the `dot` feature.
-	#[cfg(feature = "dot")]
+	#[cfg(any(doc, feature = "dot"))]
 	#[inline]
 	pub fn dot_write_label<W: std::io::Write>(&self, f: &mut W) -> std::io::Result<()>
 	where
@@ -273,10 +259,7 @@ impl<K, V> Leaf<K, V> {
 	}
 
 	#[cfg(debug_assertions)]
-	pub fn validate(&self, parent: Option<usize>, min: Option<&K>, max: Option<&K>)
-	where
-		K: Ord,
-	{
+	pub fn validate(&self, parent: Option<I>, min: Option<&K>, max: Option<&K>) where K: Ord {
 		if self.parent() != parent {
 			panic!("wrong parent")
 		}

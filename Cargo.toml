@@ -12,14 +12,14 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [features]
-default = ["std-slab"]
+default = ["slab"]
 dot = []
-std-slab = ["slab", "cc-traits/slab"]
+shareable-slab = ["slab"]
 
 [dependencies]
 smallvec = "1.8.0"
-cc-traits = "1"
 slab = { version = "0.4.5", optional = true }
+lock_api = { version = "0.4.10", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }

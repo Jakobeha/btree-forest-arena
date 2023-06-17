@@ -6,7 +6,6 @@ pub struct Item<K, V> {
 	///
 	/// This field must always be initialized when the item is accessed and/or dropped.
 	key: MaybeUninit<K>,
-
 	/// # Safety
 	///
 	/// This field must always be initialized when the item is accessed and/or dropped.
@@ -93,7 +92,7 @@ impl<K, V> Item<K, V> {
 	pub fn into_key(self) -> K {
 		let (key, value) = self.into_inner();
 		unsafe {
-			std::mem::drop(value.assume_init());
+			drop(value.assume_init());
 			key.assume_init()
 		}
 	}
@@ -102,7 +101,7 @@ impl<K, V> Item<K, V> {
 	pub fn into_value(self) -> V {
 		let (key, value) = self.into_inner();
 		unsafe {
-			std::mem::drop(key.assume_init());
+			drop(key.assume_init());
 			value.assume_init()
 		}
 	}
@@ -131,7 +130,7 @@ impl<K, V> Item<K, V> {
 	#[inline]
 	pub unsafe fn forget_value(self) {
 		let (key, _) = self.into_inner();
-		std::mem::drop(key.assume_init())
+		drop(key.assume_init())
 	}
 
 	#[inline]

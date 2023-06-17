@@ -9,8 +9,9 @@ pub fn iter() {
 	}
 
 	let mut i = 0;
-	for (key, _) in &map {
-		assert_eq!(*key, i);
+	for kv in &map {
+		assert_eq!(*kv.key(), i);
+		assert_eq!(*kv.into_key_ref(), i);
 		i += 1;
 	}
 
