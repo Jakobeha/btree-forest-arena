@@ -1,30 +1,47 @@
-# Slab-based B-Tree implementation
+# btree-store: Flexible B-trees whose storage and indexing is abstracted, so they can be stored on the stack, in the same allocator, and in other ways
 
-[![CI](https://github.com/timothee-haudebourg/btree-slab/workflows/CI/badge.svg)](https://github.com/timothee-haudebourg/btree-slab/actions)
-[![Crate informations](https://img.shields.io/crates/v/btree-slab.svg?style=flat-square)](https://crates.io/crates/btree-slab)
-[![License](https://img.shields.io/crates/l/btree-slab.svg?style=flat-square)](https://github.com/timothee-haudebourg/btree-slab#license)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/btree-slab)
+[![CI](https://github.com/Jakobeha/btree-store/workflows/CI/badge.svg)](https://github.com/Jakobeha/btree-store/actions)
+[![Crate informations](https://img.shields.io/crates/v/btree-store.svg?style=flat-square)](https://crates.io/crates/btree-store)
+[![License](https://img.shields.io/crates/l/btree-store.svg?style=flat-square)](https://github.com/Jakobeha/btree-store#license)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/btree-store)
 
-This crate provides an alternative implementation to the standard `BTreeMap`
-and `BTreeSet` data structures based on a slab data-structure. In principle,
-this implementation is more flexible and more memory efficient. It is more
-flexible by providing an extended set of low-level operations on B-Trees
-through the `BTreeExt` trait which can be used to further extend the
-functionalities of the `BTreeMap` collection.
-In addition, the underlying node allocation scheme is abstracted by a type
-parameter that can be instantiated by any data structure implementing
-slab-like operations.
-By default, the `Slab` type (from the `slab` crate) is used, which means
-that every node of the tree are allocated in a contiguous memory region,
-reducing the number of allocations needed.
-In theory, another type could be used to store the entire B-Tree on the stack.
+Forked from [btree-slab](https://github.com/timothee-haudebourg/btree-slab).
 
-### Usage
+## Why would you want this?
 
-From the user point of view, the collection provided by this crate can be
-used just like the standard `BTreeMap` and `BTreeSet` collections.
+- You want to perform complex operations on a b-tree which aren't possible via methods exposed by the standard library, in stable Rust
+- You want a more memory-compact b-tree
+- You want to store a b-tree on the stack or some other pre-allocated region, and control how nodes are allocated
+- You have many tiny b-trees and want to store them all in the same memory region, reducing allocations and increasing localization
+
+## What is it?
+
+Mainly, [`generic::BTreeMap<K, V, I, C>`](https://docs.rs/btree-store/latest/btree-store/generic/struct.BTreeMap.html) and [`generic::BTreeSet<T, I, C>`](https://docs.rs/btree-store/latest/btree-store/generic/struct.BTreeSet.html): alternative implementations of the standard `BTreeMap` and `BTreeSet` data structures, with abstracted storage (`C` type parameter) and indexing (`I` type parameter). These provide all operations the of standard library's b-trees and more, and also allow you to use initialize the b-tree in a custom store, which uses a custom index.
+
+### Instantiations
+
+This library also provides useful instantiations under various features, under their respective modules (so definitions in feature `slab` are under the `slab` module)
+
+- `slab`: Defines [`BTreeMap<K, V>`] and [`BTreeSet<T>`] which use a slab allocator
+
+### Shareable
+
+- `shareable-slab`: Defines [`BTreeMap<K, V>`] and [`BTreeSet<T>`] which use a reference to a shared slab allocator, [`ShareableSlab<T>`]. `ShareableSlab` is internally a slab within a `RefCell`, so it will *panic* at runtime if you hold a reference to one element while inserting or mutating another (this is because insertion can cause the underlying `Vec` to grow and reallocate; simultaneous mutation is theoretically safe when the store is only used by b-trees, but currently not supported).
+- `concurrent-shareable-slab`: Defines [`BTreeMap<K, V>`] and [`BTreeSet<T>`] which use a reference to [`ShareableSlab<T>`], a slab within a `RwLock`. This allows b-trees on separate threads to use the same storage, but not at the same time. (TODO)
+- `shareable-slab-simultaneous-mutation`: Defines [`BTreeMap<K, V>`], [`BTreeSet<T>`], and [`ShareableSlab<T>`] which uses `UnsafeCell` and pointer indices to allow concurrent access, mutation, and removal, but not insertion (still *panics* if there are active references on insertion). References to this `ShareableSlab<T>` must be created in an `unsafe` block, with the invariant that indices don't get simultaneously used in ways which violate Rust's borrowing rules (they won't if they're only passed to b-trees)
+- `shareable-slab-arena`: Defines [`BTreeMap<K, V>`], [`BTreeSet<T>`], and [`ShareableSlabArena<T>`] which is a slab backed by an arena (`Vec<Vec<T>>`), so that it supports concurrent access, mutation, removal, and insertion (no way to make it panic). References to this `ShareableSlab<T>` must also be created `unsafe`ly.
+
+### Alternate memory representation
+
+- `array-slab`: Defines [`BTreeMap<K, V>`] and [`BTreeSet<T>`] which use an owned [`ArraySlab`], which is a slab allocator backed by an array instead of a vector. This means they can be stored on the stack and in fixed memory regions. *TODO: the current implementation of `BTreeMap` and `BTreeSet` will occasionally spill onto the heap instead of doing expensive rebalancing, so you still can't use it in no-std or rely on to be entirely stored in a fixed memory region e.g. for easy serialization and deep copying. Add an option to disable this.*
+- TODO: `bumpalo` which can store multiple b-trees of different types, but requires every type to be dropless (have no `Drop` impl or nested field with a `Drop` impl)
+
+## Usage
+
+From the user point of view, the collection provided by this crate can be used just like the standard `BTreeMap` and `BTreeSet` collections.
+
 ```rust
-use btree_slab::BTreeMap;
+use btree_store::slab::BTreeMap;
 
 // type inference lets us omit an explicit type signature (which
 // would be `BTreeMap<&str, &str>` in this example).
@@ -63,32 +80,52 @@ for (movie, review) in &movie_reviews {
 }
 ```
 
-#### Custom node allocation
+### Custom node allocation
 
-One can use `btree_slab::generic::BTreeMap` to
-use a custom slab type to handle nodes allocation.
+One can use `btree_slab::generic::BTreeMap` to use a custom slab type to handle nodes allocation.
 
 ```rust
-use slab::Slab;
-use btree_slab::generic::BTreeMap;
+use my_slab::{MyIndex, MySlab};
+use btree_store::generic::BTreeMap;
 
-let mut map: BTreeMap<K, V, Slab<Node<K, V>>> = BTreeMap::new();
+let my_slab = MySlab::with_capacity(12);
+let mut heights_in_cm: BTreeMap<&'static str, f64, MyIndex, MySlab<Node<&'static str, f64>>> = BTreeMap::new_in(my_slab);
+heights_in_cm.insert("Bob", 177.3);
+heights_in_cm.insert("Tom", 184.7);
 ```
 
-In this example,
-the `Slab<Node<_, _>>` type is a slab-like data structure responsible for the nodes allocation.
-It must implement all the traits defining the `cc_traits::Slab` trait alias.
+In this example, we use a different kind of slab (`MySlab`) instead of `slab::Slab`, and initialize it with a fixed capacity.
+
+### Shared storage
+
+To create multiple b-trees which use the same storage, simply use a compatible storage and provide a shared reference to each b-tree.
+
+```rust
+use btree_store::shared_slab::{BTreeSet, SharedSlab};
+
+let shared_store = SharedSlab::new(12);
+let mut foo_bars: BTreeSet<'_, &'static str> = BTreeSet::new_in(&shared_store);
+let mut alphabeticals: BTreeSet<'_, &'static str> = BTreeSet::new_in(&shared_store);
+foo_bars.insert("foo");
+alphabeticals.insert("abc");
+foo_bars.insert("bar");
+alphabeticals.insert("def");
+foo_bars.insert("baz");
+foo_bars.insert("qux");
+alphabeticals.insert("xyz");
+for elem in &foo_bars {
+    println!("{}", elem);
+}
+for elem in &alphabeticals {
+    println!("{}", elem);
+}
+```
+
+Just make sure that, with `shareable_slab`, you don't hold a reference to an element in one of the sets (including iterating) while mutating another set. If you need this, use `shareable_slab_simultaneous_mutation` or `shareable_slab_arena` instead.
 
 ### Extended API & Addressing
 
-In this implementation of B-Trees, each node of a tree is addressed
-by the `Address` type.
-The extended API, visible through the `BTreeExt` trait,
-allows the caller to explore, access and modify the
-internal structure of the tree using this addressing system.
-This can be used to further extend the functionalities of the `BTreeMap`
-collection, for example in the
-[`btree-range-map`](https://crates.io/crates/btree-range-map) crate.
+In this implementation of B-Trees, each node of a tree is addressed by the `Address` type. The extended API, visible through the `BTreeExt` trait, allows the caller to explore, access and modify the internal structure of the tree using this addressing system. This can be used to further extend the functionalities of the `BTreeMap` collection, for instance see what [`btree-range-map`](https://crates.io/crates/btree-range-map) does with [`btree-slab`](https://crates.io/crates/btree-slab) (which provides a similar extended API, because this crate was derived from it).
 
 ## License
 
@@ -99,8 +136,8 @@ Licensed under either of
 
 at your option.
 
+Forked from [btree-slab](https://github.com/timothee-haudebourg/btree-slab), which is also dual licensed under Apache 2.0 "or" MIT.
+
 ### Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

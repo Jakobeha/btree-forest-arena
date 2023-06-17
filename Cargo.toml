@@ -1,13 +1,13 @@
 [package]
-name = "btree-slab"
-version = "0.5.1"
-authors = ["Timothée Haudebourg <author@haudebourg.net>"]
+name = "btree-store"
+version = "0.6.0"
+authors = ["Timothée Haudebourg <author@haudebourg.net>", "Jakob Hain <jakobeha@fastmail.com>"]
 edition = "2021"
 categories = ["data-structures"]
 keywords = ["btree", "map", "set", "slab"]
-description = "A memory compact Slab-based B-tree implementation"
-repository = "https://github.com/timothee-haudebourg/btree-slab"
-documentation = "https://docs.rs/btree-slab"
+description = "Flexible B-trees whose storage and indexing is abstracted, so they can be stored on the stack, in the same allocator, and in other ways"
+repository = "https://github.com/Jakobeha/btree-store"
+documentation = "https://docs.rs/btree-store"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 
@@ -17,8 +17,8 @@ dot = []
 shareable-slab = ["slab"]
 
 [dependencies]
-smallvec = "1.8.0"
-slab = { version = "0.4.5", optional = true }
+smallvec = "1.10.0"
+slab = { version = "0.4.8", optional = true }
 lock_api = { version = "0.4.10", optional = true }
 
 [dev-dependencies]
