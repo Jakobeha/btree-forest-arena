@@ -1,4 +1,4 @@
-use btree_slab::BTreeMap;
+use btree_store::slab::BTreeMap;
 use std::{cell::Cell, rc::Rc};
 
 #[test]

@@ -1,21 +1,22 @@
-#![doc = include_str("../README.md")]
+#![doc = include_str!("../README.md")]
+
+/// Generic B-Tree types.
+///
+/// Types defined in this module are independent of the actual storage type.
 pub mod generic;
+/// Misc utility functions
+#[cfg(any(doc, feature = "utils"))]
 pub mod utils;
+#[cfg(not(any(doc, feature = "utils")))]
+mod utils;
+/// b-tree which stores its data in an owned slab
+#[cfg(any(doc, feature = "slab"))]
+pub mod slab;
+/// b-tree which stores its data in a reference to [shareable_slab::ShareableSlab], so its store can
+/// be shared with other b-trees
 #[cfg(any(doc, feature = "shareable-slab"))]
 pub mod shareable_slab;
-
-/// B-Tree map based on `Slab`.
-#[cfg(any(doc, feature = "slab"))]
-pub type BTreeMap<K, V> = generic::BTreeMap<K, V, usize, slab::Slab<generic::Node<K, V, usize>>>;
-
-/// B-Tree set based on `Slab`.
-#[cfg(any(doc, feature = "slab"))]
-pub type BTreeSet<T> = generic::BTreeSet<T, usize, slab::Slab<generic::Node<T, (), usize>>>;
-
-/// B-Tree map based on `ShareableSlab`.
-#[cfg(any(doc, feature = "shareable-slab"))]
-pub type SharingBTreeMap<'a, K, V> = generic::BTreeMap<K, V, usize, &'a shareable_slab::ShareableSlab<generic::Node<K, V, usize>>>;
-
-/// B-Tree set based on `ShareableSlab`.
-#[cfg(any(doc, feature = "shareable-slab"))]
-pub type SharingBTreeSet<'a, T> = generic::BTreeSet<T, usize, &'a shareable_slab::ShareableSlab<generic::Node<T, (), usize>>>;
+/// b-tree which stores its data in a reference to [concurrent_shareable_slab::ShareableSlab], which
+/// can be shared across threads (implements `Sync`) via a read-write lock
+#[cfg(any(doc, feature = "concurrent-shareable-slab"))]
+pub mod concurrent_shareable_slab;

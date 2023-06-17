@@ -1,9 +1,9 @@
-use btree_slab::{
+use btree_store::{
 	generic::{
 		map::{BTreeExt, BTreeExtMut},
 		node::Item,
 	},
-	BTreeMap,
+	slab::BTreeMap,
 };
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 

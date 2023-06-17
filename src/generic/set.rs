@@ -101,7 +101,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	///
 	/// ```
 	/// # #![allow(unused_mut)]
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set: BTreeSet<i32> = BTreeSet::new();
 	/// ```
@@ -116,7 +116,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	///
 	/// ```
 	/// # #![allow(unused_mut)]
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set: BTreeSet<i32> = BTreeSet::new();
 	/// ```
@@ -130,7 +130,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut v = BTreeSet::new();
 	/// assert_eq!(v.len(), 0);
@@ -147,7 +147,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut v = BTreeSet::new();
 	/// assert!(v.is_empty());
@@ -174,7 +174,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let set: BTreeSet<usize> = [1, 2, 3].iter().cloned().collect();
 	/// let mut set_iter = set.iter();
@@ -187,7 +187,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Values returned by the iterator are returned in ascending order:
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let set: BTreeSet<usize> = [3, 1, 2].iter().cloned().collect();
 	/// let mut set_iter = set.iter();
@@ -214,7 +214,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let set: BTreeSet<_> = [1, 2, 3].iter().cloned().collect();
 	/// assert_eq!(set.contains(&1), true);
@@ -234,7 +234,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let set: BTreeSet<_> = [1, 2, 3].iter().cloned().collect();
 	/// assert_eq!(set.get(&2), Some(&2));
@@ -258,7 +258,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	/// use std::ops::Bound::Included;
 	///
 	/// let mut set = BTreeSet::new();
@@ -284,7 +284,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut a = BTreeSet::new();
 	/// a.insert(1);
@@ -313,7 +313,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut a = BTreeSet::new();
 	/// a.insert(1);
@@ -344,7 +344,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut a = BTreeSet::new();
 	/// a.insert(1);
@@ -375,7 +375,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut a = BTreeSet::new();
 	/// a.insert(1);
@@ -405,7 +405,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let a: BTreeSet<_> = [1, 2, 3].iter().cloned().collect();
 	/// let mut b = BTreeSet::new();
@@ -430,7 +430,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let sup: BTreeSet<_> = [1, 2, 3].iter().cloned().collect();
 	/// let mut set = BTreeSet::new();
@@ -452,7 +452,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let sub: BTreeSet<_> = [1, 2].iter().cloned().collect();
 	/// let mut set = BTreeSet::new();
@@ -480,7 +480,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut map = BTreeSet::new();
 	/// assert_eq!(map.first(), None);
@@ -500,7 +500,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut map = BTreeSet::new();
 	/// assert_eq!(map.first(), None);
@@ -521,7 +521,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut v = BTreeSet::new();
 	/// v.insert(1);
@@ -545,7 +545,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set = BTreeSet::new();
 	///
@@ -568,7 +568,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set = BTreeSet::new();
 	///
@@ -590,7 +590,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set: BTreeSet<_> = [1, 2, 3].iter().cloned().collect();
 	/// assert_eq!(set.take(&2), Some(2));
@@ -607,7 +607,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set = BTreeSet::new();
 	/// set.insert(Vec::<i32>::new());
@@ -627,7 +627,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set = BTreeSet::new();
 	///
@@ -648,7 +648,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set = BTreeSet::new();
 	///
@@ -670,7 +670,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let xs = [1, 2, 3, 4, 5, 6];
 	/// let mut set: BTreeSet<i32> = xs.iter().cloned().collect();
@@ -701,7 +701,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Splitting a set into even and odd values, reusing the original set:
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut set: BTreeSet<i32> = (0..8).collect();
 	/// let evens: BTreeSet<_> = set.drain_filter(|v| v % 2 == 0).collect();
@@ -724,7 +724,7 @@ impl<T: Ord, I: Index, C: OwnedSlab<Node<T, (), I>, Index=I> + Default> BTreeSet
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeSet;
+	/// use btree_store::slab::BTreeSet;
 	///
 	/// let mut a = BTreeSet::new();
 	/// a.insert(1);
@@ -760,16 +760,16 @@ impl<'a, T: Ord, I: Index, C> BTreeSet<T, I, &'a C> where &'a C: Slab<Node<T, ()
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::{SharingBTreeSet, shareable_slab::ShareableSlab};
+	/// use btree_store::shareable_slab::{BTreeSet, ShareableSlab};
 	///
 	/// let data = ShareableSlab::new();
 	///
-	/// let mut a = SharingBTreeSet::new_in(&data);
+	/// let mut a = BTreeSet::new_in(&data);
 	/// a.insert(1);
 	/// a.insert(2);
 	/// a.insert(3);
 	///
-	/// let mut b = SharingBTreeSet::new_in(&data);
+	/// let mut b = BTreeSet::new_in(&data);
 	/// b.insert(3);
 	/// b.insert(4);
 	/// b.insert(5);

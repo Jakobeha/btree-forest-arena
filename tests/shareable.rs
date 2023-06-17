@@ -1,7 +1,6 @@
 #![cfg(feature = "shareable-slab")]
 
-use btree_slab::shareable_slab::ShareableSlab;
-use btree_slab::SharingBTreeMap;
+use btree_store::shareable_slab::{BTreeMap, ShareableSlab};
 
 #[test]
 fn not_shared() {
@@ -9,13 +8,13 @@ fn not_shared() {
     let slab = ShareableSlab::new();
 
     // create a map in our shareable slab
-    let mut movie_reviews = SharingBTreeMap::new_in(&slab);
+    let mut movie_reviews = BTreeMap::new_in(&slab);
 
     // review some movies.
-    movie_reviews.insert("Office Space", "Deals with real issues in the workplace.");
-    movie_reviews.insert("Pulp Fiction", "Masterpiece.");
     movie_reviews.insert("The Godfather", "Very enjoyable.");
+    movie_reviews.insert("Pulp Fiction", "Masterpiece.");
     movie_reviews.insert("The Blues Brothers", "Eye lyked it a lot.");
+    movie_reviews.insert("Office Space", "Deals with real issues in the workplace.");
 
     // check for a specific one.
     if movie_reviews.contains_key("Les Misérables") {
@@ -24,26 +23,32 @@ fn not_shared() {
     }
 
     // oops, this review has a lot of spelling mistakes, let's delete it.
-    movie_reviews.remove("The Blues Brothers");
+    movie_reviews.remove("The Blues Brothers").unwrap();
 
     // look up the values associated with some keys.
     let to_find = ["Up!", "Office Space"];
-    for movie in &to_find {
-        match movie_reviews.get(movie) {
-            Some(review) => println!("{}: {}", movie, review),
-            None => println!("{} is unreviewed.", movie)
-        }
-    }
+    assert_eq!(
+        to_find.iter().map(|movie| movie_reviews.get(movie).map(|e| *e)).collect::<Vec<_>>(),
+        [None, Some("Deals with real issues in the workplace.")]
+    );
+
 
     // Look up the value for a key (will panic if the key is not found).
     // Can't do that because this is a [std::cell::Ref]!
     // println!("Movie review: {}", movie_reviews["Office Space"]);
 
     // iterate over everything.
-    for elem in &movie_reviews {
-        let (movie, review) = elem.as_pair();
-        println!("{}: \"{}\"", movie, review);
-    }
+    assert_eq!(
+        movie_reviews.iter().map(|kv| {
+            let (movie, review) = kv.as_pair();
+            (*movie, *review)
+        }).collect::<Vec<_>>(),
+        [
+            ("Office Space", "Deals with real issues in the workplace."),
+            ("Pulp Fiction", "Masterpiece."),
+            ("The Godfather", "Very enjoyable.")
+        ]
+    );
 }
 
 #[test]
@@ -52,8 +57,8 @@ fn shared_between_2() {
     let slab = ShareableSlab::new();
 
     // create 2 maps in our shareable slab
-    let mut movie_reviews = SharingBTreeMap::new_in(&slab);
-    let mut book_reviews = SharingBTreeMap::new_in(&slab);
+    let mut movie_reviews = BTreeMap::new_in(&slab);
+    let mut book_reviews = BTreeMap::new_in(&slab);
 
     // review some movies and books.
     movie_reviews.insert("Office Space", "Deals with real issues in the workplace.");

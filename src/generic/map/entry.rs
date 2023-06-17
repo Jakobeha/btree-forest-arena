@@ -44,7 +44,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Entry<'a, K, V, I,
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// assert_eq!(*map.entry("poneyland").key(), "poneyland");
@@ -65,7 +65,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -86,7 +86,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, String> = BTreeMap::new();
 	/// let s = "hoho".to_string();
@@ -110,7 +110,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	///
@@ -135,7 +135,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	///
@@ -166,7 +166,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, Option<usize>> = BTreeMap::new();
 	/// map.entry("poneyland").or_default();
@@ -211,7 +211,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> VacantEntry<'a, K,
 	///
 	/// ## Example
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// assert_eq!(*map.entry("poneyland").key(), "poneyland");
@@ -225,8 +225,8 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> VacantEntry<'a, K,
 	///
 	/// ## Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	///
@@ -246,8 +246,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, 
 	///
 	/// ## Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, u32> = BTreeMap::new();
 	///
@@ -288,8 +288,8 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, 
 	///
 	/// # Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -307,7 +307,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, 
 	///
 	/// # Example
 	/// ```
-	/// use btree_slab::BTreeMap;
+	/// use btree_store::slab::BTreeMap;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -327,8 +327,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	///
 	/// # Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -353,8 +353,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	///
 	/// # Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -378,8 +378,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	/// # Example
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -400,8 +400,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	/// # Examples
 	///
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);
@@ -421,8 +421,8 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	///
 	/// # Example
 	/// ```
-	/// use btree_slab::BTreeMap;
-	/// use btree_slab::generic::map::Entry;
+	/// use btree_store::slab::BTreeMap;
+	/// use btree_store::generic::map::Entry;
 	///
 	/// let mut map: BTreeMap<&str, usize> = BTreeMap::new();
 	/// map.entry("poneyland").or_insert(12);

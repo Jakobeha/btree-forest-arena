@@ -13,13 +13,27 @@ readme = "README.md"
 
 [features]
 default = ["slab"]
+slab = ["dep:slab"]
+shareable-slab = ["dep:slab"]
+concurrent-shareable-slab = ["dep:slab", "lock_api", "parking_lot"]
+shareable-slab-simultaneous-mutation = []
+shareable-slab-arena = ["typed-arena"]
+small-slab = []
+array-slab = ["arrayvec"]
+shareable-bump = ["bumpalo"]
 dot = []
-shareable-slab = ["slab"]
+utils = []
+_thunderdome_example = ["dep:thunderdome"]
 
 [dependencies]
 smallvec = "1.10.0"
 slab = { version = "0.4.8", optional = true }
 lock_api = { version = "0.4.10", optional = true }
+parking_lot = { version = "0.12.1", optional = true }
+typed-arena = { version = "2.0.2", optional = true }
+arrayvec = { version = "0.7.3", optional = true }
+bumpalo = { version = "3.13.0", optional = true }
+thunderdome = { version = "0.6.0", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }
