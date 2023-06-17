@@ -2184,6 +2184,11 @@ impl<'a, K: 'a, V: 'a, I: Index, C: Slab<Node<K, V, I>, Index=I>> DrainFilterInn
 
 	#[inline]
 	fn next_item<F: FnMut(&K, &mut V) -> bool>(&mut self, pred: &mut F) -> Option<Item<K, V>> {
+		if self.addr.id.is_nowhere() {
+			debug_assert_eq!(self.len, 0);
+			return None;
+		}
+
 		loop {
 			let drain = {
 				let item = self.btree.item_mut(self.addr);
