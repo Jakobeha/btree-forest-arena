@@ -224,19 +224,19 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>>(
 }
 
 macro_rules! generate_bench_group {
-    ($(#[$attr:meta])? $name:ident: $btree_map_type:ty, {$($bench_name:ident: ($n_maps:literal, $n_operations:literal)),* $(,)*}) => {
-        fn $name(c: &mut criterion::Criterion) {
+    ($bench_name:ident: ($n_maps:literal, $n_operations:literal), {
+        $($(#[$attr:meta])? $btree_map_name:ident: $btree_map_type:ty),* $(,)?
+    }) => {
+        fn $bench_name(c: &mut criterion::Criterion) {
             #[allow(unused_mut)]
-            let mut group = c.benchmark_group(stringify!($name));
-            $(#[$attr])?
-            {
-                $(
-                    group.bench_function(
-                        stringify!($bench_name),
-                        |b| bench_operations::<$btree_map_type>(&Default::default(), b, $n_maps, $n_operations)
-                    );
-                )*
-            }
+            let mut group = c.benchmark_group(stringify!($bench_name));
+            $(
+                $(#[$attr])?
+                group.bench_function(
+                    stringify!($btree_map_name),
+                    |b| bench_operations::<$btree_map_type>(&Default::default(), b, $n_maps, $n_operations)
+                );
+            )*
             group.finish();
         }
     }
@@ -244,15 +244,22 @@ macro_rules! generate_bench_group {
 
 
 macro_rules! generate_benches {
-    ($($(#[$attr:meta])? $name:ident: $btree_map_type:ty),* $(,)*) => {
-        criterion::criterion_group!(benches, $($name),*);
+    ($($bench_name:ident: ($n_maps:literal, $n_operations:literal)),* $(,)?) => {
+        criterion::criterion_group! {
+            name = benches;
+            config = criterion::Criterion::default().sample_size(50);
+            targets = $($bench_name),*
+        }
 
         $(
-            generate_bench_group!($(#[$attr])? $name: $btree_map_type, {
-                bench_1_map_3000_operations: (1, 3000),
-                bench_10_maps_300_operations: (10, 300),
-                bench_100_maps_30_operations: (100, 30),
-                bench_1000_maps_3_operations: (1000, 3),
+            generate_bench_group!($bench_name: ($n_maps, $n_operations), {
+                std_b_tree_map: StdBTreeMap<usize, usize>,
+                #[cfg(feature = "slab")]
+                slab_b_tree_map: SlabBTreeMap<usize, usize>,
+                #[cfg(feature = "shareable-slab")]
+                shareable_slab_b_tree_map: SharedSlabBTreeMap<'_, usize, usize>,
+                #[cfg(feature = "concurrent-shareable-slab")]
+                concurrent_shareable_slab_b_tree_map: ConcurrentSharedSlabBTreeMap<'_, usize, usize>,
             });
         )*
     };
@@ -260,11 +267,8 @@ macro_rules! generate_benches {
 
 criterion_main!(benches);
 generate_benches! {
-    std_b_tree_map: StdBTreeMap<usize, usize>,
-    #[cfg(feature = "slab")]
-    slab_b_tree_map: SlabBTreeMap<usize, usize>,
-    #[cfg(feature = "shareable-slab")]
-    shareable_slab_b_tree_map: SharedSlabBTreeMap<'_, usize, usize>,
-    #[cfg(feature = "concurrent-shareable-slab")]
-    concurrent_shareable_slab_b_tree_map: ConcurrentSharedSlabBTreeMap<'_, usize, usize>,
+    bench_1_map_3000_operations: (1, 3000),
+    bench_10_maps_300_operations: (10, 300),
+    bench_100_maps_30_operations: (100, 30),
+    bench_1000_maps_3_operations: (1000, 3),
 }
