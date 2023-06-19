@@ -2417,6 +2417,19 @@ pub struct Range<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	end: Address<I>,
 }
 
+/// If addr is past the end of a node, make it the start of the next node
+#[inline]
+fn shift_to_start<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>>(
+	btree: &BTreeMap<K, V, I, C>,
+	addr: Address<I>
+) -> Address<I> {
+	match btree.item(addr) {
+		None => btree.next_item_or_back_address(addr).unwrap(),
+		Some(_) => addr
+	}
+}
+
+#[inline]
 fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>>(
 	btree: &BTreeMap<K, V, I, C>,
 	range: impl RangeBounds<T>
@@ -2428,11 +2441,11 @@ fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: SlabView<Node<K
 	let addr = match range.start_bound() {
 		Bound::Included(start) => match btree.address_of(start) {
 			Ok(addr) => addr,
-			Err(addr) => addr,
+			Err(addr) => shift_to_start(btree, addr),
 		},
 		Bound::Excluded(start) => match btree.address_of(start) {
 			Ok(addr) => btree.next_item_or_back_address(addr).unwrap(),
-			Err(addr) => addr,
+			Err(addr) => shift_to_start(btree, addr),
 		},
 		Bound::Unbounded => btree.first_back_address(),
 	};
@@ -2440,11 +2453,11 @@ fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: SlabView<Node<K
 	let end = match range.end_bound() {
 		Bound::Included(end) => match btree.address_of(end) {
 			Ok(addr) => btree.next_item_or_back_address(addr).unwrap(),
-			Err(addr) => addr,
+			Err(addr) => shift_to_start(btree, addr),
 		},
 		Bound::Excluded(end) => match btree.address_of(end) {
 			Ok(addr) => addr,
-			Err(addr) => addr,
+			Err(addr) => shift_to_start(btree, addr),
 		},
 		Bound::Unbounded => btree.first_back_address(),
 	};
