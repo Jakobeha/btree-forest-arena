@@ -11,6 +11,10 @@ documentation = "https://docs.rs/btree-store"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 
+[[bench]]
+name = "benches"
+harness = false
+
 [features]
 default = ["slab"]
 slab = ["dep:slab"]
@@ -37,3 +41,4 @@ thunderdome = { version = "0.6.0", optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }
+criterion = { version = "0.5.1", features = ["html_reports"] }
