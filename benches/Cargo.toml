@@ -4,18 +4,22 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[features]
-slab = ["dep:slab", "btree-store/slab"]
-shareable-slab = ["btree-store/shareable-slab"]
-concurrent-shareable-slab = ["btree-store/concurrent-shareable-slab"]
-
-[dependencies]
-btree-store = { path = "../" }
-slab = { version = "0.4.8", optional = true }
-criterion = "0.5.1"
-rand = { version = "0.8.5", features = ["small_rng"] }
-
 [[bench]]
 name = "benches"
 path = "benches.rs"
 harness = false
+
+[features]
+default = ["bench"]
+bench = ["criterion"]
+slab = ["dep:slab", "btree-store/slab"]
+shareable-slab = ["btree-store/shareable-slab"]
+concurrent-shareable-slab = ["btree-store/concurrent-shareable-slab"]
+shareable-slab-simultaneous-mutation = ["btree-store/shareable-slab-simultaneous-mutation"]
+shareable-slab-arena = ["btree-store/shareable-slab-arena"]
+
+[dependencies]
+btree-store = { path = "../" }
+slab = { version = "0.4.8", optional = true }
+criterion = { version = "0.5.1", optional = true }
+rand = { version = "0.8.5", features = ["small_rng"] }

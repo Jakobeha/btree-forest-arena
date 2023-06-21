@@ -12,6 +12,11 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 autobenches = false
 
+[[test]]
+name = "benchmarks"
+path = "benches/benches.rs"
+harness = true
+
 [workspace]
 exclude = ["benches"]
 
@@ -21,7 +26,7 @@ slab = ["dep:slab"]
 shareable-slab = ["dep:slab"]
 concurrent-shareable-slab = ["dep:slab", "lock_api", "parking_lot"]
 shareable-slab-simultaneous-mutation = []
-shareable-slab-arena = ["typed-arena"]
+shareable-slab-arena = []
 small-slab = []
 array-slab = ["arrayvec"]
 shareable-bump = ["bumpalo"]
@@ -34,7 +39,6 @@ smallvec = "1.10.0"
 slab = { version = "0.4.8", optional = true }
 lock_api = { version = "0.4.10", optional = true }
 parking_lot = { version = "0.12.1", optional = true }
-typed-arena = { version = "2.0.2", optional = true }
 arrayvec = { version = "0.7.3", optional = true }
 bumpalo = { version = "3.13.0", optional = true }
 thunderdome = { version = "0.6.0", optional = true }

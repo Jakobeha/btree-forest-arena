@@ -20,3 +20,12 @@ pub mod shareable_slab;
 /// can be shared across threads (implements `Sync`) via a read-write lock
 #[cfg(any(doc, feature = "concurrent-shareable-slab"))]
 pub mod concurrent_shareable_slab;
+/// b-tree which stores its data in a reference to
+/// [shareable_slab_simultaneous_mutation::ShareableSlab], which is faster and allows concurrent
+/// access and mutation, but *panics* under insertion.
+#[cfg(any(doc, feature = "shareable-slab-simultaneous-mutation"))]
+pub mod shareable_slab_simultaneous_mutation;
+/// b-tree which stores its data in a reference to [shareable_slab_arena::ShareableSlab], which uses
+/// an arena allocator to allow simultaneous access, mutation, and insertion.
+#[cfg(any(doc, feature = "shareable-slab-arena"))]
+pub mod shareable_slab_arena;

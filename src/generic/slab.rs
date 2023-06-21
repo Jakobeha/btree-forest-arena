@@ -47,11 +47,11 @@ pub trait SlabViewWithSimpleRef<T>: SlabView<T> {
     ///
     /// ```text
     /// #[inline]
-    /// fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where T: 'a {
+    /// fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where Self: 'a {
     ///     r#ref
     /// }
     /// ```
-    fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where T: 'a;
+    fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where Self: 'a;
     /// Convert the slab view's mapped `Ref` into a simple shared reference
     ///
     /// The implementation is probably:
@@ -60,13 +60,13 @@ pub trait SlabViewWithSimpleRef<T>: SlabView<T> {
     /// #[inline]
     /// fn convert_mapped_into_simple_ref<'a, U: ?Sized>(
     ///     r#ref: <Self::Ref<'a, T> as Ref<'a, T>>::Mapped<U>
-    /// ) -> &'a U where T: 'a {
+    /// ) -> &'a U where Self: 'a {
     ///     r#ref
     /// }
     /// ```
     fn convert_mapped_into_simple_ref<'a, U: ?Sized>(
         r#ref: <Self::Ref<'a, T> as Ref<'a, T>>::Mapped<U>
-    ) -> &'a U where T: 'a;
+    ) -> &'a U where Self: 'a;
 }
 
 /// Trait for a [Slab] whose `Ref` and `RefMut` can be converted into simple references.
@@ -77,11 +77,11 @@ pub trait SlabWithSimpleRefs<T>: Slab<T> + SlabViewWithSimpleRef<T> {
     ///
     /// ```text
     /// #[inline]
-    /// fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a U where T: 'a {
+    /// fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a U where Self: 'a {
     ///     r#ref
     /// }
     /// ```
-    fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a U where T: 'a;
+    fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a mut U where Self: 'a;
     /// Convert the slab view's mapped `Ref` into a simple shared reference
     ///
     /// The implementation is probably:
@@ -90,13 +90,13 @@ pub trait SlabWithSimpleRefs<T>: Slab<T> + SlabViewWithSimpleRef<T> {
     /// #[inline]
     /// fn convert_mapped_into_simple_mut<'a, U: ?Sized>(
     ///     r#ref: <Self::RefMut<'a, T> as RefMut<'a, T>>::Mapped<U>
-    /// ) -> &'a mut U where T: 'a {
+    /// ) -> &'a mut U where Self: 'a {
     ///     r#ref
     /// }
     /// ```
     fn convert_mapped_into_simple_mut<'a, U: ?Sized>(
         r#ref: <Self::RefMut<'a, T> as RefMut<'a, T>>::Mapped<U>
-    ) -> &'a mut U where T: 'a;
+    ) -> &'a mut U where Self: 'a;
 }
 
 /// Marker trait for a slab which is completely owned by a collection (not a derivative of a shared
@@ -133,14 +133,14 @@ impl<T> SlabView<T> for slab::Slab<T> {
 #[cfg(any(doc, feature = "slab"))]
 impl<T> SlabViewWithSimpleRef<T> for slab::Slab<T> {
     #[inline]
-    fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where T: 'a {
+    fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where Self: 'a {
         r#ref
     }
 
     #[inline]
     fn convert_mapped_into_simple_ref<'a, U: ?Sized>(
         r#ref: <Self::Ref<'a, T> as Ref<'a, T>>::Mapped<U>
-    ) -> &'a U where T: 'a {
+    ) -> &'a U where Self: 'a {
         r#ref
     }
 }
@@ -183,14 +183,14 @@ impl<T> OwnedSlab<T> for slab::Slab<T> {
 #[cfg(any(doc, feature = "slab"))]
 impl<T> SlabWithSimpleRefs<T> for slab::Slab<T> {
     #[inline]
-    fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a U where T: 'a {
+    fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a mut U where Self: 'a {
         r#ref
     }
 
     #[inline]
     fn convert_mapped_into_simple_mut<'a, U: ?Sized>(
         r#ref: <Self::RefMut<'a, T> as RefMut<'a, T>>::Mapped<U>
-    ) -> &'a mut U where T: 'a {
+    ) -> &'a mut U where Self: 'a {
         r#ref
     }
 }
