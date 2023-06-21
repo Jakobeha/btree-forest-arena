@@ -644,6 +644,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> f
 		}
 	}
 
+	#[inline]
 	fn address_of<Q: Ord + ?Sized>(&self, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q> {
 		match self.root {
 			Some(id) => self.address_in(id, key),
@@ -651,6 +652,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> f
 		}
 	}
 
+	#[inline]
 	fn address_in<Q: Ord + ?Sized>(&self, mut id: I, key: &Q) -> Result<Address<I>, Address<I>> where K: Borrow<Q> {
 		loop {
 			match self.node(id).offset_of(key) {

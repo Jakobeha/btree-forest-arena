@@ -203,9 +203,14 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>, B: Bencher>(
     n_operations: usize
 ) {
     let mut rng = SmallRng::seed_from_u64(42);
-    let mut maps = (0..n_maps).map(|_| T::new_in(store)).collect::<Vec<_>>();
+    let mut maps = Vec::with_capacity(n_maps);
 
     b.iter(|| {
+        // Create
+        for _ in 0..n_maps {
+            maps.push(T::new_in(store));
+        }
+
         // Insert
         for map in &mut maps {
             for _ in 0..n_operations {
@@ -260,6 +265,9 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>, B: Bencher>(
                 B::black_box(map.remove(&rng.gen_range(0..n_operations)));
             }
         }
+
+        // Destroy
+        maps.clear();
     });
 }
 

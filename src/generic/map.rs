@@ -18,7 +18,7 @@ use crate::generic::slab::{Index, OwnedSlab, Ref, RefMut, SlabViewWithSimpleRef,
 /// Knuth order of the B-Trees.
 ///
 /// Must be at least 4.
-pub const M: usize = 8;
+pub const M: usize = 10;
 
 /// A map based on a B-Tree.
 ///
