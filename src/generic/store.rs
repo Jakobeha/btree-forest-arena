@@ -4,11 +4,11 @@ mod r#ref;
 pub use index::*;
 pub use r#ref::*;
 
-/// Trait for a generic immutable view of a slab. It must support immutable indexing
-pub trait SlabView<T> {
-    /// The type of index or key used to remember and retrieve elements from this slab
+/// Trait for a generic immutable view of a store. It must support immutable indexing
+pub trait StoreView<T> {
+    /// The type of index or key used to remember and retrieve elements from this store
     type Index: Index;
-    /// Type of shared references to elements in this slab (e.g. regular shared reference,
+    /// Type of shared references to elements in this store (e.g. regular shared reference,
     /// [std::cell::Ref])
     type Ref<'a, U: ?Sized + 'a>: Ref<'a, U> where Self: 'a;
 
@@ -16,32 +16,34 @@ pub trait SlabView<T> {
     fn get(&self, index: Self::Index) -> Option<Self::Ref<'_, T>>;
 }
 
-/// Trait for a generic slab. It must support insertion, removal, and indexing
-pub trait Slab<T>: SlabView<T> {
-    /// Type of mutable references to elements in this slab (e.g. regular mutable reference,
+/// Trait for a generic store. It must support insertion, removal, and indexing
+pub trait Store<T>: StoreView<T> {
+    /// Type of mutable references to elements in this store (e.g. regular mutable reference,
     /// [std::cell::RefMut])
     type RefMut<'a, U: ?Sized + 'a>: RefMut<'a, U> where Self: 'a;
 
-    /// Insert an element into the slab, returning the index at which it was inserted.
-    /// Subsequent calls to [Self::get] and [Self::get_mut] with the returned index must return a
+    /// Insert an element into the store, returning the index at which it was inserted.
+    /// Subsequent calls to [Self::get] and [Self::get_mut] with the returned index will return a
     /// reference to the inserted element.
     fn insert(&mut self, value: T) -> Self::Index;
-    /// Remove an element from the slab, returning the element that was removed.
+    /// Remove an element from the store, returning the element that was removed.
+    ///
     /// Subsequent calls to [Self::get] and [Self::get_mut] with the given index must return `None`
     /// until a new element is inserted, then they can refer to any new element.
     fn remove(&mut self, index: Self::Index) -> Option<T>;
-    /// Get a mutable reference to an element in the slab, if any.
+    /// Get a mutable reference to an element in the store, if any.
+    ///
     /// [Self::get] and [Self::get_mut] must both return `Some` or both return `None`, and if both
     /// `Some`, they must return a same reference to the same element.
     fn get_mut(&mut self, index: Self::Index) -> Option<Self::RefMut<'_, T>>;
-    /// If this slab is completely owned (not a derivative of a shared slab), clear all elements and
-    /// return `true`. Otherwise return `false`.
+    /// If this store is completely owned (not a reference to a shared store), clear all elements
+    /// and return `true`. Otherwise return `false`.
     fn clear_fast(&mut self) -> bool;
 }
 
-/// Trait for a [SlabView] whose `Ref` can be converted into a simple reference.
-pub trait SlabViewWithSimpleRef<T>: SlabView<T> {
-    /// Convert the slab view's `Ref` into a simple shared reference
+/// Trait for a [StoreView] whose `Ref` can be converted into a simple reference.
+pub trait SlabViewWithSimpleRef<T>: StoreView<T> {
+    /// Convert the store view's `Ref` into a simple shared reference
     ///
     /// The implementation is probably:
     ///
@@ -52,7 +54,7 @@ pub trait SlabViewWithSimpleRef<T>: SlabView<T> {
     /// }
     /// ```
     fn convert_into_simple_ref<'a, U: ?Sized>(r#ref: Self::Ref<'a, U>) -> &'a U where Self: 'a;
-    /// Convert the slab view's mapped `Ref` into a simple shared reference
+    /// Convert the store view's mapped `Ref` into a simple shared reference
     ///
     /// The implementation is probably:
     ///
@@ -69,9 +71,9 @@ pub trait SlabViewWithSimpleRef<T>: SlabView<T> {
     ) -> &'a U where Self: 'a;
 }
 
-/// Trait for a [Slab] whose `Ref` and `RefMut` can be converted into simple references.
-pub trait SlabWithSimpleRefs<T>: Slab<T> + SlabViewWithSimpleRef<T> {
-    /// Convert the slab view's `RefMut` into a simple mutable reference
+/// Trait for a [Store] whose `Ref` and `RefMut` can be converted into simple references.
+pub trait SlabWithSimpleRefs<T>: Store<T> + SlabViewWithSimpleRef<T> {
+    /// Convert the store view's `RefMut` into a simple mutable reference
     ///
     /// The implementation is probably:
     ///
@@ -82,7 +84,7 @@ pub trait SlabWithSimpleRefs<T>: Slab<T> + SlabViewWithSimpleRef<T> {
     /// }
     /// ```
     fn convert_into_simple_mut<'a, U: ?Sized>(r#ref: Self::RefMut<'a, U>) -> &'a mut U where Self: 'a;
-    /// Convert the slab view's mapped `Ref` into a simple shared reference
+    /// Convert the store view's mapped `Ref` into a simple shared reference
     ///
     /// The implementation is probably:
     ///
@@ -99,13 +101,13 @@ pub trait SlabWithSimpleRefs<T>: Slab<T> + SlabViewWithSimpleRef<T> {
     ) -> &'a mut U where Self: 'a;
 }
 
-/// Marker trait for a slab which is completely owned by a collection (not a derivative of a shared
-/// slab).
+/// Marker trait for a store which is completely owned by a collection (not a derivative of a shared
+/// store).
 ///
-/// This means that there are no elements from other slabs, so its length will always be the
+/// This means that there are no elements from other stores, so its length will always be the
 /// collection's length, we can completely iterate/clear it when iterate/clearing the collection,
 /// and other relations/operations are simplified.
-pub trait OwnedSlab<T>: Slab<T> {
+pub trait OwnedSlab<T>: Store<T> {
     /// Clear all elements. This trait's `clear_fast` should call this and return then `true`, i.e.
     /// it should be implemented exactly via the following
     ///
@@ -120,7 +122,7 @@ pub trait OwnedSlab<T>: Slab<T> {
 }
 
 #[cfg(any(doc, feature = "slab"))]
-impl<T> SlabView<T> for slab::Slab<T> {
+impl<T> StoreView<T> for slab::Slab<T> {
     type Index = usize;
     type Ref<'a, U: ?Sized + 'a> = &'a U where T: 'a;
 
@@ -146,7 +148,7 @@ impl<T> SlabViewWithSimpleRef<T> for slab::Slab<T> {
 }
 
 #[cfg(any(doc, feature = "slab"))]
-impl<T> Slab<T> for slab::Slab<T> {
+impl<T> Store<T> for slab::Slab<T> {
     type RefMut<'a, U: ?Sized + 'a> = &'a mut U where T: 'a;
 
     #[inline]

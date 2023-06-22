@@ -7,9 +7,9 @@ use rand::{Rng, rngs::SmallRng, SeedableRng};
 
 #[cfg(feature = "concurrent-shareable-slab")]
 use btree_store::concurrent_shareable_slab::BTreeMap as ConcurrentShareableSlabBTreeMap;
-use btree_store::generic::{Node, SlabView};
+use btree_store::generic::{Node, StoreView};
 use btree_store::generic::map::KeyValueRef;
-use btree_store::generic::slab::Index;
+use btree_store::generic::store::Index;
 #[cfg(feature = "shareable-slab")]
 use btree_store::shareable_slab::BTreeMap as ShareableSlabBTreeMap;
 #[cfg(feature = "shareable-slab-arena")]
@@ -68,7 +68,7 @@ impl<'a, K, V> Entry<'a, K, V> for (&'a K, &'a V) {
     }
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Entry<'a, K, V> for KeyValueRef<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Entry<'a, K, V> for KeyValueRef<'a, K, V, I, C> {
     fn key(&self) -> &K {
         self.key()
     }
@@ -186,13 +186,13 @@ impl_b_tree_map!(StdBTreeMap, std::collections::btree_map);
 #[cfg(feature = "slab")]
 impl_b_tree_map!(SlabBTreeMap, btree_store::generic::map, usize, slab::Slab);
 #[cfg(feature = "shareable-slab")]
-impl_b_tree_map!(ShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab::ShareableSlab);
+impl_b_tree_map!(ShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab::Store);
 #[cfg(feature = "concurrent-shareable-slab")]
-impl_b_tree_map!(ConcurrentShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::concurrent_shareable_slab::ShareableSlab);
+impl_b_tree_map!(ConcurrentShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::concurrent_shareable_slab::Store);
 #[cfg(feature = "shareable-slab-simultaneous-mutation")]
-impl_b_tree_map!(ShareableSlabSimultaneousMutationBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab_simultaneous_mutation::ShareableSlab);
+impl_b_tree_map!(ShareableSlabSimultaneousMutationBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab_simultaneous_mutation::Store);
 #[cfg(feature = "shareable-slab-arena")]
-impl_b_tree_map!(ShareableSlabArenaBTreeMap, btree_store::generic::map, btree_store::shareable_slab_arena::Index, &'store btree_store::shareable_slab_arena::ShareableSlabArena);
+impl_b_tree_map!(ShareableSlabArenaBTreeMap, btree_store::generic::map, btree_store::shareable_slab_arena::Index, &'store btree_store::shareable_slab_arena::Store);
 // endregion
 
 //noinspection RsUnnecessaryQualifications (IntelliJ is bugged)

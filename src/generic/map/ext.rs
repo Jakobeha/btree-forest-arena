@@ -1,8 +1,8 @@
-use crate::generic::{map::{BTreeMap, M, ValueRef}, node::{Address, Balance, Item, Node, Offset}, Slab, SlabView};
+use crate::generic::{map::{BTreeMap, M, ValueRef}, node::{Address, Balance, Item, Node, Offset}, Store, StoreView};
 use smallvec::SmallVec;
 use std::{borrow::Borrow, mem::MaybeUninit};
 use crate::generic::map::{alter_value_lifetime, ItemMut, ItemRef, ValueMut};
-use crate::generic::slab::{Index, Ref, RefMut};
+use crate::generic::store::{Index, Ref, RefMut};
 
 /// Extended API.
 ///
@@ -20,7 +20,7 @@ use crate::generic::slab::{Index, Ref, RefMut};
 ///
 /// Note that a valid address does not always refer to an actual item in the tree.
 /// See the [`Address`] type documentation for more details.
-pub trait BTreeExt<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub trait BTreeExt<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// Get the root node id.
 	///
 	/// Returns `None` if the tree is empty.
@@ -214,7 +214,7 @@ pub trait BTreeExt<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 /// The user of this trait is responsible to preserve the invariants of the data-structure.
 /// In particular, no item must be modified or inserted in a way that
 /// break the order between keys.
-pub trait BTreeExtMut<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> {
+pub trait BTreeExtMut<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> {
 	/// Set the new known number of items in the tree.
 	fn set_len(&mut self, len: usize);
 
@@ -307,7 +307,7 @@ pub trait BTreeExtMut<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> {
 	fn release_node(&mut self, id: I) -> Node<K, V, I>;
 }
 
-impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> for BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn root_id(&self) -> Option<I> {
 		self.root
@@ -315,7 +315,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> f
 
 	#[inline]
 	fn node(&self, id: I) -> C::Ref<'_, Node<K, V, I>> {
-		self.store.get(id).unwrap()
+		self.store.get(id).expect("no node with id")
 	}
 
 	#[inline]
@@ -708,7 +708,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeExt<K, V, I, C> f
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeExtMut<K, V, I, C> for BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> BTreeExtMut<K, V, I, C> for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn set_len(&mut self, new_len: usize) {
 		self.len = new_len
@@ -721,7 +721,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeExtMut<K, V, I, C> fo
 
 	#[inline]
 	fn node_mut(&mut self, id: I) -> C::RefMut<'_, Node<K, V, I>> {
-		self.store.get_mut(id).unwrap()
+		self.store.get_mut(id).expect("no node with id")
 	}
 
 	#[inline]
@@ -1057,6 +1057,6 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeExtMut<K, V, I, C> fo
 
 	#[inline]
 	fn release_node(&mut self, id: I) -> Node<K, V, I> {
-		self.store.remove(id).unwrap()
+		self.store.remove(id).expect("no node with id (double-free?)")
 	}
 }

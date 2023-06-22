@@ -1,11 +1,11 @@
 #![cfg(feature = "shareable-slab")]
 
-use btree_store::shareable_slab::{BTreeMap, ShareableSlab};
+use btree_store::shareable_slab::{BTreeMap, Store};
 
 #[test]
 fn not_shared() {
     // create a shareable slab
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     // create a map in our shareable slab
     let mut movie_reviews = BTreeMap::new_in(&slab);
@@ -54,7 +54,7 @@ fn not_shared() {
 #[test]
 fn shared_between_2() {
     // create a shareable slab
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     // create 2 maps in our shareable slab
     let mut movie_reviews = BTreeMap::new_in(&slab);

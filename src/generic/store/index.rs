@@ -1,6 +1,6 @@
 use std::ptr::{null, null_mut};
 
-/// A way to identify an item in a slab
+/// A way to identify an item in a store
 pub trait Index: Copy + Eq {
     fn nowhere() -> Self;
     fn is_nowhere(&self) -> bool;

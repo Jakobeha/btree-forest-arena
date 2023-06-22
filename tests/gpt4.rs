@@ -6,7 +6,7 @@ use std::thread;
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 
-use btree_store::concurrent_shareable_slab::{BTreeMap, BTreeSet, ShareableSlab};
+use btree_store::concurrent_shareable_slab::{BTreeMap, BTreeSet, Store};
 
 const ELEMS: [usize; 10] = [
     12,
@@ -36,7 +36,7 @@ const KV_ELEMS: [(usize, &'static str); 10] = [
 
 #[test]
 fn shared_between_maps_and_sets_same_thread() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     let mut map = BTreeMap::new_in(&slab);
     let mut set = BTreeSet::new_in(&slab);
@@ -65,7 +65,7 @@ fn shared_between_maps_and_sets_same_thread() {
 
 #[test]
 fn shared_between_maps_and_sets_concurrent_threads() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     thread::scope(|scope| {
         let map_thread = scope.spawn(|| {
@@ -98,7 +98,7 @@ fn shared_between_maps_and_sets_concurrent_threads() {
 
 #[test]
 fn shared_concurrent_maps_insertion_and_removal() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     thread::scope(|scope| {
         let map1_thread = scope.spawn(|| {
@@ -145,7 +145,7 @@ fn shared_concurrent_maps_insertion_and_removal() {
 
 #[test]
 fn shared_maps_set_clear_same_thread() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     let mut map1 = BTreeMap::new_in(&slab);
     let mut map2 = BTreeMap::new_in(&slab);
@@ -178,7 +178,7 @@ fn shared_maps_set_clear_same_thread() {
 
 #[test]
 fn shared_maps_entry_api_same_thread() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     let mut map1 = BTreeMap::new_in(&slab);
 
@@ -197,7 +197,7 @@ fn shared_maps_entry_api_same_thread() {
 
 #[test]
 fn shared_maps_entry_api_concurrent_threads() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     thread::scope(|scope| {
         let map_thread1 = scope.spawn(|| {
@@ -245,7 +245,7 @@ fn shared_maps_entry_api_concurrent_threads() {
 
 #[test]
 fn shared_sets_operations_same_thread() {
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     let mut set1 = BTreeSet::new_in(&slab);
     let mut set2 = BTreeSet::new_in(&slab);

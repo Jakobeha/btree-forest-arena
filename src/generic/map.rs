@@ -1,4 +1,4 @@
-use crate::generic::{node::{Address, Balance, Item, Node, WouldUnderflow}, Slab, SlabView};
+use crate::generic::{node::{Address, Balance, Item, Node, WouldUnderflow}, Store, StoreView};
 use std::{
 	borrow::Borrow,
 	cmp::Ordering,
@@ -13,7 +13,7 @@ mod ext;
 
 pub use entry::*;
 pub use ext::*;
-use crate::generic::slab::{Index, OwnedSlab, Ref, RefMut, SlabViewWithSimpleRef, SlabWithSimpleRefs};
+use crate::generic::store::{Index, OwnedSlab, Ref, RefMut, SlabViewWithSimpleRef, SlabWithSimpleRefs};
 
 /// Knuth order of the B-Trees.
 ///
@@ -131,22 +131,22 @@ pub const M: usize = 10;
 /// ## Custom allocation
 ///
 /// This data structure is built on top of a slab data structure,
-/// but is agnostic of the actual slab implementation which is taken as parameter (`C`).
+/// but is agnostic of the actual store which is taken as parameter (`C`).
 /// If the `slab` feature is enabled,
 /// the [`slab::Slab`] implementation is used by default by reexporting
 /// `BTreeMap<K, V, slab::Slab<_>>` at the root of the crate.
-/// Any container implementing "slab-like" functionalities can be used.
+/// Any container implementing "store" functionalities can be used, even non-slabs.
 ///
 /// You can also pass an existing allocator. For instance, if you want to store multiple maps in the
-/// same slab, you can use [`shareable_slab::BTreeMap`]s and pass them each a reference to the same
+/// same store, you can use [`shareable_slab::BTreeMap`]s and pass them each a reference to the same
 /// [`shareable_slab::ShareableSlab`]
 ///
 /// ```
 /// #![cfg(feature = "shareable-slab")]
-/// use btree_store::shareable_slab::{ShareableSlab, BTreeMap};
+/// use btree_store::shareable_slab::{Store, BTreeMap};
 ///
 /// // create a shareable slab
-/// let slab = ShareableSlab::new();
+/// let slab = Store::new();
 ///
 /// // create 2 maps in our shareable slab
 /// let mut movie_reviews = BTreeMap::new_in(&slab);
@@ -234,7 +234,7 @@ pub const M: usize = 10;
 /// This is normally only possible through [`Cell`](`std::cell::Cell`),
 /// [`RefCell`](`std::cell::RefCell`), global state, I/O, or unsafe code.
 #[derive(Clone)]
-pub struct BTreeMap<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct BTreeMap<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// Contains allocated nodes. May contain other data as well, as long as it preserves the node
 	/// indices.
 	store: C,
@@ -247,28 +247,28 @@ pub struct BTreeMap<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 }
 
 /// `Deref`-able pointer to a key in a [BTreeMap]
-pub type KeyRef<'a, K, V, I, C> = <<C as SlabView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<K>;
+pub type KeyRef<'a, K, V, I, C> = <<C as StoreView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<K>;
 /// `Deref`-able pointer to a value in a [BTreeMap]
-pub type ValueRef<'a, K, V, I, C> = <<C as SlabView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<V>;
+pub type ValueRef<'a, K, V, I, C> = <<C as StoreView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<V>;
 /// `DerefMut`-able pointer to a value in a [BTreeMap]
-pub type ValueMut<'a, K, V, I, C> = <<C as Slab<Node<K, V, I>>>::RefMut<'a, Node<K, V, I>> as RefMut<'a, Node<K, V, I>>>::Mapped<V>;
+pub type ValueMut<'a, K, V, I, C> = <<C as Store<Node<K, V, I>>>::RefMut<'a, Node<K, V, I>> as RefMut<'a, Node<K, V, I>>>::Mapped<V>;
 /// `Deref`-able pointer to an item (key and value, like an entry but different) in a [BTreeMap]
-pub type ItemRef<'a, K, V, I, C> = <<C as SlabView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<Item<K, V>>;
+pub type ItemRef<'a, K, V, I, C> = <<C as StoreView<Node<K, V, I>>>::Ref<'a, Node<K, V, I>> as Ref<'a, Node<K, V, I>>>::Mapped<Item<K, V>>;
 /// `DerefMut`-able pointer to an item (key and value, like an entry but different) in a [BTreeMap]
-pub type ItemMut<'a, K, V, I, C> = <<C as Slab<Node<K, V, I>>>::RefMut<'a, Node<K, V, I>> as RefMut<'a, Node<K, V, I>>>::Mapped<Item<K, V>>;
+pub type ItemMut<'a, K, V, I, C> = <<C as Store<Node<K, V, I>>>::RefMut<'a, Node<K, V, I>> as RefMut<'a, Node<K, V, I>>>::Mapped<Item<K, V>>;
 
 /// Stores a shared reference to a key and value
-pub struct KeyValueRef<'a, K: 'a, V: 'a, I: Index + 'a, C: SlabView<Node<K, V, I>, Index=I> + 'a>(
+pub struct KeyValueRef<'a, K: 'a, V: 'a, I: Index + 'a, C: StoreView<Node<K, V, I>, Index=I> + 'a>(
 	ItemRef<'a, K, V, I, C>
 );
 
 
 /// Stores a shared reference to a key and mutable reference to a value
-pub struct KeyRefValueMut<'a, K: 'a, V: 'a, I: Index + 'a, C: Slab<Node<K, V, I>, Index=I> + 'a>(
+pub struct KeyRefValueMut<'a, K: 'a, V: 'a, I: Index + 'a, C: Store<Node<K, V, I>, Index=I> + 'a>(
 	ItemMut<'a, K, V, I, C>
 );
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> KeyValueRef<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> KeyValueRef<'a, K, V, I, C> {
 	#[inline]
 	pub fn key(&self) -> &K {
 		self.0.key()
@@ -302,7 +302,7 @@ impl<'a, K, V, I: Index, C: SlabViewWithSimpleRef<Node<K, V, I>, Index=I>> KeyVa
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> KeyRefValueMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> KeyRefValueMut<'a, K, V, I, C> {
 	#[inline]
 	pub fn key(&self) -> &K {
 		self.0.key()
@@ -343,7 +343,7 @@ impl<'a, K, V, I: Index, C: SlabWithSimpleRefs<Node<K, V, I>, Index=I>> KeyRefVa
 	}
 }
 
-impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I> + Default> BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I> + Default> BTreeMap<K, V, I, C> {
 	/// Create a new empty B-tree with a new store.
 	#[inline]
 	pub fn new() -> BTreeMap<K, V, I, C> {
@@ -357,7 +357,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I> + Default> BTreeMap<K, 
 	}
 }
 
-impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	/// Create a new empty B-tree with a pre-existing store.
 	#[inline]
 	pub fn new_in(store: C) -> BTreeMap<K, V, I, C> {
@@ -433,7 +433,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	}
 }
 
-impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	/// Returns the value corresponding to the supplied key.
 	///
 	/// The supplied key may be any borrowed form of the map's key type, but the ordering
@@ -651,7 +651,7 @@ impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	}
 }
 
-impl<K: std::fmt::Display, V: std::fmt::Display, I: Index + std::fmt::Display, C: SlabView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
+impl<K: std::fmt::Display, V: std::fmt::Display, I: Index + std::fmt::Display, C: StoreView<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	/// Write the tree in the DOT graph descrption language.
 	///
 	/// Requires the `dot` feature.
@@ -692,7 +692,7 @@ impl<K: std::fmt::Display, V: std::fmt::Display, I: Index + std::fmt::Display, C
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	/// Returns a mutable reference to the value corresponding to the supplied key.
 	///
 	/// The supplied key may be any borrowed form of the map's key type, but the ordering
@@ -1412,7 +1412,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	}
 }
 
-impl<K: Ord, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
+impl<K: Ord, V, I: Index, C: Store<Node<K, V, I>, Index=I>> BTreeMap<K, V, I, C> {
 	/// Gets the given key's corresponding entry in the map for in-place manipulation.
 	///
 	/// # Example
@@ -1549,7 +1549,7 @@ impl<K: Ord, V, I: Index, C: OwnedSlab<Node<K, V, I>, Index=I> + Default> BTreeM
 	}
 }
 
-impl<'a, K: Ord, V, I: Index, C> BTreeMap<K, V, I, &'a C> where &'a C: Slab<Node<K, V, I>, Index=I> {
+impl<'a, K: Ord, V, I: Index, C> BTreeMap<K, V, I, &'a C> where &'a C: Store<Node<K, V, I>, Index=I> {
 	/// Asserts both allocators are the same, then we can possibly append smarter (TODO)
 	#[inline]
 	pub fn append2(&mut self, other: &mut Self) {
@@ -1610,8 +1610,8 @@ impl<
 	W: PartialEq<V>,
 	I: Index,
 	J: Index + PartialEq<I>,
-	C: SlabView<Node<K, V, I>, Index=I>,
-	D: SlabView<Node<L, W, J>, Index=J>
+	C: StoreView<Node<K, V, I>, Index=I>,
+	D: StoreView<Node<L, W, J>, Index=J>
 > PartialEq<BTreeMap<L, W, J, D>> for BTreeMap<K, V, I, C> {
 	fn eq(&self, other: &BTreeMap<L, W, J, D>) -> bool {
 		if self.len() == other.len() {
@@ -1637,14 +1637,14 @@ impl<
 	}
 }
 
-impl<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I> + Default> Default for BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I> + Default> Default for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn default() -> Self {
 		BTreeMap::new()
 	}
 }
 
-impl<K: Ord, V, I: Index, C: Slab<Node<K, V, I>, Index=I> + Default> FromIterator<(K, V)> for BTreeMap<K, V, I, C> {
+impl<K: Ord, V, I: Index, C: Store<Node<K, V, I>, Index=I> + Default> FromIterator<(K, V)> for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> BTreeMap<K, V, I, C> {
 		let mut map = BTreeMap::new();
@@ -1657,7 +1657,7 @@ impl<K: Ord, V, I: Index, C: Slab<Node<K, V, I>, Index=I> + Default> FromIterato
 	}
 }
 
-impl<K: Ord, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Extend<(K, V)> for BTreeMap<K, V, I, C> {
+impl<K: Ord, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Extend<(K, V)> for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
 		for (key, value) in iter {
@@ -1666,7 +1666,7 @@ impl<K: Ord, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Extend<(K, V)> for BT
 	}
 }
 
-impl<'a, K: Ord + Copy, V: Copy, I: Index, C: Slab<Node<K, V, I>, Index=I>> Extend<(&'a K, &'a V)>
+impl<'a, K: Ord + Copy, V: Copy, I: Index, C: Store<Node<K, V, I>, Index=I>> Extend<(&'a K, &'a V)>
 	for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
@@ -1674,7 +1674,7 @@ impl<'a, K: Ord + Copy, V: Copy, I: Index, C: Slab<Node<K, V, I>, Index=I>> Exte
 	}
 }
 
-impl<K: Eq, V: Eq, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Eq for BTreeMap<K, V, I, C> {}
+impl<K: Eq, V: Eq, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Eq for BTreeMap<K, V, I, C> {}
 
 impl<
 	K,
@@ -1683,8 +1683,8 @@ impl<
 	W: PartialOrd<V>,
 	I: Index,
 	J: Index + PartialOrd<I>,
-	C: SlabView<Node<K, V, I>, Index=I>,
-	D: SlabView<Node<L, W, J>, Index=J>
+	C: StoreView<Node<K, V, I>, Index=I>,
+	D: StoreView<Node<L, W, J>, Index=J>
 > PartialOrd<BTreeMap<L, W, J, D>> for BTreeMap<K, V, I, C> {
 	fn partial_cmp(&self, other: &BTreeMap<L, W, J, D>) -> Option<Ordering> {
 		let mut it1 = self.iter();
@@ -1711,7 +1711,7 @@ impl<
 	}
 }
 
-impl<K: Ord, V: Ord, I: Index + Ord, C: SlabView<Node<K, V, I>, Index=I>> Ord for BTreeMap<K, V, I, C> {
+impl<K: Ord, V: Ord, I: Index + Ord, C: StoreView<Node<K, V, I>, Index=I>> Ord for BTreeMap<K, V, I, C> {
 	fn cmp(&self, other: &BTreeMap<K, V, I, C>) -> Ordering {
 		let mut it1 = self.iter();
 		let mut it2 = other.iter();
@@ -1735,7 +1735,7 @@ impl<K: Ord, V: Ord, I: Index + Ord, C: SlabView<Node<K, V, I>, Index=I>> Ord fo
 	}
 }
 
-impl<K: Hash, V: Hash, I: Index + Hash, C: SlabView<Node<K, V, I>, Index=I>> Hash for BTreeMap<K, V, I, C> {
+impl<K: Hash, V: Hash, I: Index + Hash, C: StoreView<Node<K, V, I>, Index=I>> Hash for BTreeMap<K, V, I, C> {
 	#[inline]
 	fn hash<H: Hasher>(&self, h: &mut H) {
 		for kv in self {
@@ -1745,7 +1745,7 @@ impl<K: Hash, V: Hash, I: Index + Hash, C: SlabView<Node<K, V, I>, Index=I>> Has
 	}
 }
 
-pub struct Iter<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct Iter<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a BTreeMap<K, V, I, C>,
 	/// Address of the next item.
@@ -1754,7 +1754,7 @@ pub struct Iter<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	len: usize,
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iter<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Iter<'a, K, V, I, C> {
 	#[inline]
 	fn new(btree: &'a BTreeMap<K, V, I, C>) -> Self {
 		let addr = btree.first_item_address();
@@ -1768,7 +1768,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iter<'a, K, V, I, 
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Iter<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Iterator for Iter<'a, K, V, I, C> {
 	type Item = KeyValueRef<'a, K, V, I, C>;
 
 	#[inline]
@@ -1795,10 +1795,10 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Iter<
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> FusedIterator for Iter<'a, K, V, I, C> {}
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> ExactSizeIterator for Iter<'a, K, V, I, C> where {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> FusedIterator for Iter<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> ExactSizeIterator for Iter<'a, K, V, I, C> where {}
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Iter<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Iter<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<KeyValueRef<'a, K, V, I, C>> {
 		if self.len > 0 {
@@ -1818,7 +1818,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterato
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> IntoIterator for &'a BTreeMap<K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> IntoIterator for &'a BTreeMap<K, V, I, C> {
 	type Item = KeyValueRef<'a, K, V, I, C>;
 	type IntoIter = Iter<'a, K, V, I, C>;
 
@@ -1828,7 +1828,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> IntoIterator for &
 	}
 }
 
-pub struct IterMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct IterMut<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a mut BTreeMap<K, V, I, C>,
 	/// Address of the next item.
@@ -1837,7 +1837,7 @@ pub struct IterMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	len: usize,
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IterMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> IterMut<'a, K, V, I, C> {
 	#[inline]
 	fn new(btree: &'a mut BTreeMap<K, V, I, C>) -> Self {
 		let addr = btree.first_item_address();
@@ -1887,7 +1887,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IterMut<'a, K, V, I, C
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IterMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for IterMut<'a, K, V, I, C> {
 	type Item = KeyRefValueMut<'a, K, V, I, C>;
 
 	#[inline]
@@ -1901,10 +1901,10 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IterMut<'
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for IterMut<'a, K, V, I, C> {}
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> ExactSizeIterator for IterMut<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for IterMut<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> ExactSizeIterator for IterMut<'a, K, V, I, C> {}
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for IterMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for IterMut<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<KeyRefValueMut<'a, K, V, I, C>> {
 		self.next_back_item().map(KeyRefValueMut)
@@ -1912,7 +1912,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator fo
 }
 
 /// Iterator that can mutate the tree in place.
-pub struct EntriesMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct EntriesMut<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a mut BTreeMap<K, V, I, C>,
 	/// Address of the next item, or last valid address.
@@ -1920,7 +1920,7 @@ pub struct EntriesMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	len: usize,
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> EntriesMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> EntriesMut<'a, K, V, I, C> {
 	/// Create a new iterator over all the items of the map.
 	#[inline]
 	fn new(btree: &'a mut BTreeMap<K, V, I, C>) -> EntriesMut<'a, K, V, I, C> {
@@ -1988,7 +1988,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> EntriesMut<'a, K, V, I
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for EntriesMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for EntriesMut<'a, K, V, I, C> {
 	type Item = KeyRefValueMut<'a, K, V, I, C>;
 
 	#[inline]
@@ -2008,7 +2008,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for EntriesMu
 /// (provided by the `IntoIterator` trait). See its documentation for more.
 ///
 /// [`into_iter`]: IntoIterator::into_iter
-pub struct IntoIter<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct IntoIter<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: BTreeMap<K, V, I, C>,
 
@@ -2022,7 +2022,7 @@ pub struct IntoIter<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	len: usize,
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IntoIter<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> IntoIter<K, V, I, C> {
 	#[inline]
 	pub fn new(btree: BTreeMap<K, V, I, C>) -> Self {
 		let addr = btree.first_item_address();
@@ -2060,10 +2060,10 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IntoIter<K, V, I, C> {
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for IntoIter<K, V, I, C> {}
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoIter<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for IntoIter<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoIter<K, V, I, C> {}
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoIter<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for IntoIter<K, V, I, C> {
 	type Item = (K, V);
 
 	#[inline]
@@ -2111,7 +2111,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoIter<K, V
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoIter<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoIter<K, V, I, C> {
 	fn next_back(&mut self) -> Option<(K, V)> {
 		if self.len > 0 {
 			let addr = match self.end {
@@ -2151,7 +2151,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for In
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IntoIterator for BTreeMap<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> IntoIterator for BTreeMap<K, V, I, C> {
 	type Item = (K, V);
 	type IntoIter = IntoIter<K, V, I, C>;
 
@@ -2161,7 +2161,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> IntoIterator for BTreeMap<
 	}
 }
 
-pub(crate) struct DrainFilterInner<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub(crate) struct DrainFilterInner<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a mut BTreeMap<K, V, I, C>,
 	/// Address of the next item, or last valid address.
@@ -2169,7 +2169,7 @@ pub(crate) struct DrainFilterInner<'a, K, V, I: Index, C: SlabView<Node<K, V, I>
 	len: usize,
 }
 
-impl<'a, K: 'a, V: 'a, I: Index, C: Slab<Node<K, V, I>, Index=I>> DrainFilterInner<'a, K, V, I, C> {
+impl<'a, K: 'a, V: 'a, I: Index, C: Store<Node<K, V, I>, Index=I>> DrainFilterInner<'a, K, V, I, C> {
 	#[inline]
 	pub fn new(btree: &'a mut BTreeMap<K, V, I, C>) -> Self {
 		let addr = btree.first_back_address();
@@ -2217,12 +2217,12 @@ impl<'a, K: 'a, V: 'a, I: Index, C: Slab<Node<K, V, I>, Index=I>> DrainFilterInn
 	}
 }
 
-pub struct DrainFilter<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> {
+pub struct DrainFilter<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> {
 	pred: F,
 	inner: DrainFilterInner<'a, K, V, I, C>,
 }
 
-impl<'a, K: 'a, V: 'a, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool>
+impl<'a, K: 'a, V: 'a, I: Index, C: Store<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool>
 	DrainFilter<'a, K, V, I, C, F> {
 	#[inline]
 	fn new(btree: &'a mut BTreeMap<K, V, I, C>, pred: F) -> Self {
@@ -2233,9 +2233,9 @@ impl<'a, K: 'a, V: 'a, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> FusedIterator for DrainFilter<'a, K, V, I, C, F> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> FusedIterator for DrainFilter<'a, K, V, I, C, F> {}
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'a, K, V, I, C, F> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'a, K, V, I, C, F> {
 	type Item = (K, V);
 
 	#[inline]
@@ -2249,7 +2249,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> Drop for DrainFilter<'a, K, V, I, C, F> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -> bool> Drop for DrainFilter<'a, K, V, I, C, F> {
 	#[inline]
 	fn drop(&mut self) {
 		// keep calling next until we run out of items
@@ -2257,14 +2257,14 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>, F: FnMut(&K, &mut V) -
 	}
 }
 
-pub struct Keys<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct Keys<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	inner: Iter<'a, K, V, I, C>,
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> FusedIterator for Keys<'a, K, V, I, C> {}
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> ExactSizeIterator for Keys<'a, K, V, I, C> where {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> FusedIterator for Keys<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> ExactSizeIterator for Keys<'a, K, V, I, C> where {}
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Keys<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Iterator for Keys<'a, K, V, I, C> {
 	type Item = KeyRef<'a, K, V, I, C>;
 
 	#[inline]
@@ -2278,21 +2278,21 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Keys<
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Keys<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Keys<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<KeyRef<'a, K, V, I, C>> {
 		self.inner.next_back().map(|kv| kv.into_key_ref())
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for IntoKeys<K, V, I, C> {}
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoKeys<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for IntoKeys<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoKeys<K, V, I, C> {}
 
-pub struct IntoKeys<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct IntoKeys<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	inner: IntoIter<K, V, I, C>,
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoKeys<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for IntoKeys<K, V, I, C> {
 	type Item = K;
 
 	#[inline]
@@ -2306,21 +2306,21 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoKeys<K, V
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoKeys<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoKeys<K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<K> {
 		self.inner.next_back().map(|(k, _)| k)
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> FusedIterator for Values<'a, K, V, I, C> {}
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> ExactSizeIterator for Values<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> FusedIterator for Values<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> ExactSizeIterator for Values<'a, K, V, I, C> {}
 
-pub struct Values<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct Values<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	inner: Iter<'a, K, V, I, C>,
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Values<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Iterator for Values<'a, K, V, I, C> {
 	type Item = ValueRef<'a, K, V, I, C>;
 
 	#[inline]
@@ -2334,21 +2334,21 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Value
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Values<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Values<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<ValueRef<'a, K, V, I, C>> {
 		self.inner.next_back().map(|kv| kv.into_value_ref())
 	}
 }
 
-pub struct ValuesMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct ValuesMut<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	inner: IterMut<'a, K, V, I, C>,
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for ValuesMut<'a, K, V, I, C> {}
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> ExactSizeIterator for ValuesMut<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for ValuesMut<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> ExactSizeIterator for ValuesMut<'a, K, V, I, C> {}
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for ValuesMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for ValuesMut<'a, K, V, I, C> {
 	type Item = ValueMut<'a, K, V, I, C>;
 
 	#[inline]
@@ -2362,21 +2362,21 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for ValuesMut
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for ValuesMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for ValuesMut<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<ValueMut<'a, K, V, I, C>> {
 		self.inner.next_back().map(|kv| kv.into_value_mut())
 	}
 }
 
-pub struct IntoValues<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct IntoValues<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	inner: IntoIter<K, V, I, C>,
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for IntoValues<K, V, I, C> {}
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoValues<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for IntoValues<K, V, I, C> {}
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> ExactSizeIterator for IntoValues<K, V, I, C> {}
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoValues<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for IntoValues<K, V, I, C> {
 	type Item = V;
 
 	#[inline]
@@ -2390,7 +2390,7 @@ impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for IntoValues<K,
 	}
 }
 
-impl<K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoValues<K, V, I, C> {
+impl<K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for IntoValues<K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<V> {
 		self.inner.next_back().map(|(_, v)| v)
@@ -2409,7 +2409,7 @@ fn is_valid_range<T: Ord + ?Sized, R: RangeBounds<T>>(range: &R) -> bool {
 	}
 }
 
-pub struct Range<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct Range<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a BTreeMap<K, V, I, C>,
 	/// Address of the next item or last back address.
@@ -2419,7 +2419,7 @@ pub struct Range<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 
 /// If addr is past the end of a node, make it the start of the next node
 #[inline]
-fn shift_to_start<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>>(
+fn shift_to_start<K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>>(
 	btree: &BTreeMap<K, V, I, C>,
 	addr: Address<I>
 ) -> Address<I> {
@@ -2430,7 +2430,7 @@ fn shift_to_start<K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>>(
 }
 
 #[inline]
-fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>>(
+fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>>(
 	btree: &BTreeMap<K, V, I, C>,
 	range: impl RangeBounds<T>
 ) -> (Address<I>, Address<I>) {
@@ -2465,7 +2465,7 @@ fn range_addr_end<T: Ord + ?Sized, K: Borrow<T>, V, I: Index, C: SlabView<Node<K
 	(addr, end)
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Range<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Range<'a, K, V, I, C> {
 	fn new<T: Ord + ?Sized>(
 		btree: &'a BTreeMap<K, V, I, C>,
 		range: impl RangeBounds<T>,
@@ -2475,7 +2475,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Range<'a, K, V, I,
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Range<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Iterator for Range<'a, K, V, I, C> {
 	type Item = KeyValueRef<'a, K, V, I, C>;
 
 	#[inline]
@@ -2490,9 +2490,9 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Iterator for Range
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> FusedIterator for Range<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> FusedIterator for Range<'a, K, V, I, C> {}
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Range<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> DoubleEndedIterator for Range<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<KeyValueRef<'a, K, V, I, C>> {
 		if self.addr != self.end {
@@ -2506,7 +2506,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> DoubleEndedIterato
 	}
 }
 
-pub struct RangeMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct RangeMut<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	/// The tree reference.
 	btree: &'a mut BTreeMap<K, V, I, C>,
 	/// Address of the next item or last back address.
@@ -2514,7 +2514,7 @@ pub struct RangeMut<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
 	end: Address<I>,
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> RangeMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> RangeMut<'a, K, V, I, C> {
 	fn new<T: Ord + ?Sized>(
 		btree: &'a mut BTreeMap<K, V, I, C>,
 		range: impl RangeBounds<T>
@@ -2548,7 +2548,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> RangeMut<'a, K, V, I, 
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for RangeMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Iterator for RangeMut<'a, K, V, I, C> {
 	type Item = KeyRefValueMut<'a, K, V, I, C>;
 
 	#[inline]
@@ -2557,22 +2557,22 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Iterator for RangeMut<
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> FusedIterator for RangeMut<'a, K, V, I, C> {}
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> FusedIterator for RangeMut<'a, K, V, I, C> {}
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> DoubleEndedIterator for RangeMut<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> DoubleEndedIterator for RangeMut<'a, K, V, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<KeyRefValueMut<'a, K, V, I, C>> {
 		self.next_back_item().map(KeyRefValueMut)
 	}
 }
 
-unsafe fn alter_item_lifetime<'a, 'b, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>>(
+unsafe fn alter_item_lifetime<'a, 'b, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>>(
 	item: ItemMut<'a, K, V, I, C>
 ) -> ItemMut<'b, K, V, I, C> {
 	std::mem::transmute(item)
 }
 
-unsafe fn alter_value_lifetime<'a, 'b, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>>(
+unsafe fn alter_value_lifetime<'a, 'b, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>>(
 	item: ValueMut<'a, K, V, I, C>
 ) -> ValueMut<'b, K, V, I, C> {
 	std::mem::transmute(item)

@@ -3,23 +3,22 @@ use std::fmt::{Debug, Formatter};
 use std::mem::{forget, replace};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{addr_of, addr_of_mut};
-use crate::generic::SlabView;
-use crate::generic::slab::Slab;
+use crate::generic::StoreView;
 
-/// B-Tree map based on `ShareableSlab`.
-pub type BTreeMap<'a, K, V> = crate::generic::BTreeMap<K, V, usize, &'a ShareableSlab<crate::generic::Node<K, V, usize>>>;
+/// B-Tree map based on [Store].
+pub type BTreeMap<'a, K, V> = crate::generic::BTreeMap<K, V, usize, &'a Store<crate::generic::Node<K, V, usize>>>;
 
-/// B-Tree set based on `ShareableSlab`.
-pub type BTreeSet<'a, T> = crate::generic::BTreeSet<T, usize, &'a ShareableSlab<crate::generic::Node<T, (), usize>>>;
+/// B-Tree set based on [Store].
+pub type BTreeSet<'a, T> = crate::generic::BTreeSet<T, usize, &'a Store<crate::generic::Node<T, (), usize>>>;
 
-/// A slab which can be shared by multiple b-trees, and multiple b-trees can simultaneously access,
-/// mutate, and delete entries, but *panics* if there is an insertion while elements are being
-/// accessed or mutated.
-pub struct ShareableSlab<T>(UnsafeCell<_ShareableSlab<T>>);
+/// Shareable storage implemented via `UnsafeCell`. Can be shared by multiple b-trees, and multiple
+/// b-trees can simultaneously access, mutate, and delete entries, but *panics* if there is an
+/// insertion while elements are being accessed or mutated.
+pub struct Store<T>(UnsafeCell<_Store<T>>);
 
 type VecRawParts<T> = (*mut T, usize, usize);
 
-struct _ShareableSlab<T> {
+struct _Store<T> {
     /// Chunk of memory. We have to store the vector as raw parts so that we can get pointers to
     /// elements without entirely borrowing it to call `Vec::as_ptr`. When we need to perform `Vec`
     /// operations, we're in a situation where we can borrow the entire struct, so we call
@@ -58,9 +57,9 @@ pub struct RefMut<'a, T: ?Sized> {
     num_active_refs: *mut usize,
 }
 
-impl<T> ShareableSlab<T> {
+impl<T> Store<T> {
     pub fn new() -> Self {
-        Self(UnsafeCell::new(_ShareableSlab {
+        Self(UnsafeCell::new(_Store {
             entries: Vec::new().into_raw_parts_stable(),
             len: 0,
             next: 0,
@@ -69,7 +68,7 @@ impl<T> ShareableSlab<T> {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self(UnsafeCell::new(_ShareableSlab {
+        Self(UnsafeCell::new(_Store {
             entries: Vec::with_capacity(capacity).into_raw_parts_stable(),
             len: 0,
             next: 0,
@@ -77,6 +76,7 @@ impl<T> ShareableSlab<T> {
         }))
     }
 
+    #[inline]
     fn get_ref_pointers_and_increment_num_refs(
         &self,
         index: usize
@@ -89,9 +89,6 @@ impl<T> ShareableSlab<T> {
             // Note: This won't happen since this structure is only used by b-trees, and they
             // don't get empty elements, but we return None to comply with the actual trait
             // implementation
-            // ???: change trait's get, get_mut, and remove to panic instead of returning None,
-            //   (or even mark them unsafe and do UB, though b-tree may have bugs, so probably
-            //    no, we want to keep checking. Though we could mark them unsafe...)
             return None
         }
         // SAFETY: Assuming this is only used by b-trees, there are no mutable references to
@@ -110,6 +107,7 @@ impl<T> ShareableSlab<T> {
         }
     }
 
+    #[inline]
     fn assert_no_refs(&self) {
         let ptr = self.0.get();
         // SAFETY: "Atomic", and no parallel access since we're in `UnsafeCell`
@@ -121,7 +119,7 @@ impl<T> ShareableSlab<T> {
     }
 }
 
-impl<T> Debug for ShareableSlab<T> {
+impl<T> Debug for Store<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let ptr = self.0.get();
         f.debug_struct("ShareableSlab")
@@ -133,13 +131,13 @@ impl<T> Debug for ShareableSlab<T> {
     }
 }
 
-impl<T> Default for ShareableSlab<T> {
+impl<T> Default for Store<T> {
     fn default() -> Self {
-        ShareableSlab::new()
+        Store::new()
     }
 }
 
-impl<T> _ShareableSlab<T> {
+impl<T> _Store<T> {
     #[inline]
     fn with_entries<Return>(&self, op: impl FnOnce(&Vec<Entry<T>>) -> Return) -> Return {
         let vec = self.materialize_vec();
@@ -164,17 +162,18 @@ impl<T> _ShareableSlab<T> {
     }
 }
 
-impl<T> Drop for _ShareableSlab<T> {
+impl<T> Drop for _Store<T> {
     fn drop(&mut self) {
         assert_eq!(self.num_active_refs, 0, "Dropping a ShareableSlab with active references");
         drop(self.materialize_vec())
     }
 }
 
-impl<'a, T> SlabView<T> for &'a ShareableSlab<T> {
+impl<'a, T> StoreView<T> for &'a Store<T> {
     type Index = usize;
     type Ref<'b, U: ?Sized + 'b> = Ref<'b, U> where Self: 'b;
 
+    #[inline]
     fn get(&self, index: Self::Index) -> Option<Self::Ref<'_, T>> {
         self.get_ref_pointers_and_increment_num_refs(index).map(|(elem, num_active_refs)| Ref {
             // SAFETY: Assuming this is only used by b-trees, there are no mutable references to
@@ -186,9 +185,10 @@ impl<'a, T> SlabView<T> for &'a ShareableSlab<T> {
     }
 }
 
-impl<'a, T> Slab<T> for &'a ShareableSlab<T> {
+impl<'a, T> crate::generic::store::Store<T> for &'a Store<T> {
     type RefMut<'b, U: ?Sized + 'b> = RefMut<'b, U> where Self: 'b;
 
+    #[inline]
     fn insert(&mut self, value: T) -> Self::Index {
         self.assert_no_refs();
         // SAFETY: We just checked, there are no refs
@@ -211,6 +211,7 @@ impl<'a, T> Slab<T> for &'a ShareableSlab<T> {
         key
     }
 
+    #[inline]
     fn remove(&mut self, index: Self::Index) -> Option<T> {
         // We can't borrow self entirely, because there may be active mutable references to some
         // parts
@@ -271,15 +272,17 @@ impl<'a, T> Slab<T> for &'a ShareableSlab<T> {
 impl<'a, T: ?Sized> Deref for Ref<'a, T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         // `elem` will only be `None` when this is being consumed, and we don't deref then
         self.elem.as_ref().unwrap()
     }
 }
 
-impl<'a, T: ?Sized> crate::generic::slab::Ref<'a, T> for Ref<'a, T> {
+impl<'a, T: ?Sized> crate::generic::store::Ref<'a, T> for Ref<'a, T> {
     type Mapped<U: ?Sized + 'a> = Ref<'a, U>;
 
+    #[inline]
     fn map<U: ?Sized>(mut self, f: impl FnOnce(&T) -> &U) -> Self::Mapped<U> {
         // `elem` will only be `None` when this is being consumed, which is now; we can't/won't call
         // `map` on `self` again.
@@ -290,6 +293,7 @@ impl<'a, T: ?Sized> crate::generic::slab::Ref<'a, T> for Ref<'a, T> {
         }
     }
 
+    #[inline]
     fn try_map<U: ?Sized>(
         mut self,
         f: impl FnOnce(&T) -> Option<&U>
@@ -309,8 +313,9 @@ impl<'a, T: ?Sized> crate::generic::slab::Ref<'a, T> for Ref<'a, T> {
         }
     }
 
+    #[inline]
     fn cast_map_transitive<U: ?Sized + 'a, V: ?Sized>(
-        r#ref: <Self::Mapped<U> as crate::generic::slab::Ref<'a, U>>::Mapped<V>
+        r#ref: <Self::Mapped<U> as crate::generic::store::Ref<'a, U>>::Mapped<V>
     ) -> Self::Mapped<V> {
         r#ref
     }
@@ -329,6 +334,7 @@ impl<'a, T: ?Sized> Drop for Ref<'a, T> {
 impl<'a, T: ?Sized> Deref for RefMut<'a, T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         // `elem` will only be `None` when this is being consumed, and we don't deref then
         self.elem.as_ref().unwrap()
@@ -337,15 +343,17 @@ impl<'a, T: ?Sized> Deref for RefMut<'a, T> {
 
 
 impl<'a, T: ?Sized> DerefMut for RefMut<'a, T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         // `elem` will only be `None` when this is being consumed, and we don't deref then
         self.elem.as_mut().unwrap()
     }
 }
 
-impl<'a, T: ?Sized> crate::generic::slab::RefMut<'a, T> for RefMut<'a, T> {
+impl<'a, T: ?Sized> crate::generic::store::RefMut<'a, T> for RefMut<'a, T> {
     type Mapped<U: ?Sized + 'a> = RefMut<'a, U>;
 
+    #[inline]
     fn map<U: ?Sized>(mut self, f: impl FnOnce(&mut T) -> &mut U) -> Self::Mapped<U> {
         // `elem` will only be `None` when this is being consumed, which is now; we can't/won't call
         // `map` on `self` again.
@@ -356,6 +364,7 @@ impl<'a, T: ?Sized> crate::generic::slab::RefMut<'a, T> for RefMut<'a, T> {
         }
     }
 
+    #[inline]
     fn try_map<U: ?Sized>(
         mut self,
         f: impl FnOnce(&mut T) -> Option<&mut U>
@@ -378,8 +387,9 @@ impl<'a, T: ?Sized> crate::generic::slab::RefMut<'a, T> for RefMut<'a, T> {
         }
     }
 
+    #[inline]
     fn cast_map_transitive<U: ?Sized + 'a, V: ?Sized>(
-        r#ref: <Self::Mapped<U> as crate::generic::slab::RefMut<'a, U>>::Mapped<V>
+        r#ref: <Self::Mapped<U> as crate::generic::store::RefMut<'a, U>>::Mapped<V>
     ) -> Self::Mapped<V> {
         r#ref
     }
@@ -402,6 +412,7 @@ trait IntoRawPartsStable<T> {
 }
 
 impl<T> IntoRawPartsStable<T> for Vec<T> {
+    #[inline]
     fn into_raw_parts_stable(mut self) -> VecRawParts<T> {
         let ptr = self.as_mut_ptr();
         let len = self.len();

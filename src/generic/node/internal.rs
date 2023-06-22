@@ -7,7 +7,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{borrow::Borrow, cmp::Ordering};
-use crate::generic::slab::Index;
+use crate::generic::store::Index;
 
 /// Underflow threshold.
 ///

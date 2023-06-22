@@ -6,7 +6,7 @@ use std::thread;
 #[test]
 #[cfg(feature = "shareable-slab")]
 fn shared_between_3() {
-    let slab = btree_store::shareable_slab::ShareableSlab::new();
+    let slab = btree_store::shareable_slab::Store::new();
 
     let mut map1 = btree_store::shareable_slab::BTreeMap::new_in(&slab);
     let mut map2 = btree_store::shareable_slab::BTreeMap::new_in(&slab);
@@ -47,7 +47,7 @@ fn shared_between_3() {
 #[cfg(feature = "concurrent-shareable-slab")]
 fn shared_concurrently() {
     // Create a shareable slab
-    let slab = btree_store::concurrent_shareable_slab::ShareableSlab::new();
+    let slab = btree_store::concurrent_shareable_slab::Store::new();
 
     // Create a vector to hold the maps
     let mut maps = Vec::new();

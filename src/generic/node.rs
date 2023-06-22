@@ -9,7 +9,7 @@ pub use addr::Address;
 pub use internal::Internal as InternalNode;
 pub use item::Item;
 pub use leaf::Leaf as LeafNode;
-use crate::generic::slab::Index;
+use crate::generic::store::Index;
 
 /// Type identifier by a key.
 ///

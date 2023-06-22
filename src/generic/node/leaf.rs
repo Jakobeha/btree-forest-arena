@@ -7,7 +7,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::borrow::Borrow;
-use crate::generic::slab::Index;
+use crate::generic::store::Index;
 
 #[derive(Clone)]
 pub struct Leaf<K, V, I: Index> {

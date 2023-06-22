@@ -6,30 +6,30 @@ use Entry::*;
 use crate::generic::{
 	map::{BTreeExt, BTreeExtMut, BTreeMap},
 	node::{Address, Item, Node},
-	Slab,
-	SlabView
+	Store,
+	StoreView
 };
 use crate::generic::map::{KeyRef, ValueMut, ValueRef};
-use crate::generic::slab::{Index, Ref, RefMut};
+use crate::generic::store::{Index, Ref, RefMut};
 
 /// A view into a single entry in a map, which may either be vacant or occupied.
 ///
 /// This enum is constructed from the [`entry`](`BTreeMap#entry`) method on [`BTreeMap`].
-pub enum Entry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub enum Entry<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	Vacant(VacantEntry<'a, K, V, I, C>),
 	Occupied(OccupiedEntry<'a, K, V, I, C>),
 }
 
 /// `Deref`-able pointer to a key which may or may not be in a [BTreeMap]
-pub struct EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: SlabView<Node<K, V, I>, Index=I> + 'a>(
+pub struct EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: StoreView<Node<K, V, I>, Index=I> + 'a>(
 	_EntryKeyRef<'a, K, V, I, C>
 );
-enum _EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: SlabView<Node<K, V, I>, Index=I> + 'a> {
+enum _EntryKeyRef<'a, K, V: 'a, I: Index + 'a, C: StoreView<Node<K, V, I>, Index=I> + 'a> {
 	Vacant(&'a K),
 	Occupied(KeyRef<'a, K, V, I, C>)
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
 	/// Gets the address of the entry in the B-Tree.
 	#[inline]
 	pub fn address(&self) -> Address<I> {
@@ -58,7 +58,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Entry<'a, K, V, I,
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> {
 	/// Ensures a value is in the entry by inserting the default if empty, and returns
 	/// a mutable reference to the value in the entry.
 	///
@@ -182,7 +182,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> Entry<'a, K, V, I, C> 
 	}
 }
 
-impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug for Entry<'a, K, V, I, C> {
+impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: StoreView<Node<K, V, I>, Index=I>> fmt::Debug for Entry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
@@ -194,13 +194,13 @@ impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Inde
 
 /// A view into a vacant entry in a [`BTreeMap`].
 /// It is part of the [`Entry`] enum.
-pub struct VacantEntry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct VacantEntry<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	pub(crate) map: &'a mut BTreeMap<K, V, I, C>,
 	pub(crate) key: K,
 	pub(crate) addr: Address<I>,
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
 	/// Gets the address of the vacant entry in the B-Tree.
 	#[inline]
 	pub fn address(&self) -> Address<I> {
@@ -240,7 +240,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> VacantEntry<'a, K,
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, I, C> {
 	/// Sets the value of the entry with the `VacantEntry`'s key,
 	/// and returns a mutable reference to it.
 	///
@@ -263,7 +263,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> VacantEntry<'a, K, V, 
 	}
 }
 
-impl<'a, K: fmt::Debug, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug for VacantEntry<'a, K, V, I, C> {
+impl<'a, K: fmt::Debug, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> fmt::Debug for VacantEntry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_tuple("VacantEntry").field(self.key()).finish()
@@ -272,12 +272,12 @@ impl<'a, K: fmt::Debug, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::D
 
 /// A view into an occupied entry in a [`BTreeMap`].
 /// It is part of the [`Entry`] enum.
-pub struct OccupiedEntry<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> {
+pub struct OccupiedEntry<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> {
 	pub(crate) map: &'a mut BTreeMap<K, V, I, C>,
 	pub(crate) addr: Address<I>,
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
 	/// Gets the address of the occupied entry in the B-Tree.
 	#[inline]
 	pub fn address(&self) -> Address<I> {
@@ -319,7 +319,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> OccupiedEntry<'a, 
 	}
 }
 
-impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: Store<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V, I, C> {
 	/// Gets a mutable reference to the value in the entry.
 	///
 	/// If you need a reference to the OccupiedEntry that may outlive
@@ -441,7 +441,7 @@ impl<'a, K, V, I: Index, C: Slab<Node<K, V, I>, Index=I>> OccupiedEntry<'a, K, V
 	}
 }
 
-impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Index=I>> fmt::Debug
+impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: StoreView<Node<K, V, I>, Index=I>> fmt::Debug
 	for OccupiedEntry<'a, K, V, I, C> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -452,7 +452,7 @@ impl<'a, K: fmt::Debug, V: fmt::Debug, I: Index, C: SlabView<Node<K, V, I>, Inde
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> EntryKeyRef<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> EntryKeyRef<'a, K, V, I, C> {
 	#[inline]
 	fn occupied(key: KeyRef<'a, K, V, I, C>) -> Self {
 		Self(_EntryKeyRef::Occupied(key))
@@ -463,7 +463,7 @@ impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> EntryKeyRef<'a, K,
 	}
 }
 
-impl<'a, K, V, I: Index, C: SlabView<Node<K, V, I>, Index=I>> Deref for EntryKeyRef<'a, K, V, I, C> {
+impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Deref for EntryKeyRef<'a, K, V, I, C> {
 	type Target = K;
 
 	#[inline]

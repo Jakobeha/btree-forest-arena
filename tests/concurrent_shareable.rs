@@ -1,12 +1,12 @@
 #![cfg(feature = "concurrent-shareable-slab")]
 
 use std::thread;
-use btree_store::concurrent_shareable_slab::{BTreeMap, ShareableSlab};
+use btree_store::concurrent_shareable_slab::{BTreeMap, Store};
 
 #[test]
 fn shared_between_2() {
     // create a shareable slab
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     // create 2 maps in our shareable slab
     let mut movie_reviews = BTreeMap::new_in(&slab);
@@ -84,7 +84,7 @@ fn shared_between_2() {
 #[test]
 fn shared_between_2_on_separate_threads() {
     // create a shareable slab
-    let slab = ShareableSlab::new();
+    let slab = Store::new();
 
     thread::scope(|scope| {
         let movie_thread = scope.spawn(|| {

@@ -1,20 +1,20 @@
 use std::cell::{Ref, RefCell, RefMut};
 
-use crate::generic::SlabView;
-use crate::generic::slab::Slab;
+use crate::generic::StoreView;
 
-/// B-Tree map based on `ShareableSlab`.
-pub type BTreeMap<'a, K, V> = crate::generic::BTreeMap<K, V, usize, &'a ShareableSlab<crate::generic::Node<K, V, usize>>>;
+/// B-Tree map based on [Store].
+pub type BTreeMap<'a, K, V> = crate::generic::BTreeMap<K, V, usize, &'a Store<crate::generic::Node<K, V, usize>>>;
 
-/// B-Tree set based on `ShareableSlab`.
-pub type BTreeSet<'a, T> = crate::generic::BTreeSet<T, usize, &'a ShareableSlab<crate::generic::Node<T, (), usize>>>;
+/// B-Tree set based on [Store].
+pub type BTreeSet<'a, T> = crate::generic::BTreeSet<T, usize, &'a Store<crate::generic::Node<T, (), usize>>>;
 
-/// A slab which can be shared by multiple b-trees, but *panics* if there are simultaneous mutable
-/// accesses, or simultaneously any accesses and an insertion or removal.
+/// Shareable storage implemented via a `RefCell<slab::Slab<T>>`. Can be shared by multiple b-trees,
+/// but *panics* if there are simultaneous mutable accesses, or simultaneously any accesses and an
+/// insertion or removal.
 #[derive(Debug, Clone)]
-pub struct ShareableSlab<T>(RefCell<slab::Slab<T>>);
+pub struct Store<T>(RefCell<slab::Slab<T>>);
 
-impl<T> ShareableSlab<T> {
+impl<T> Store<T> {
     pub fn new() -> Self {
         Self(RefCell::new(slab::Slab::new()))
     }
@@ -24,25 +24,25 @@ impl<T> ShareableSlab<T> {
     }
 }
 
-impl<T> Default for ShareableSlab<T> {
+impl<T> Default for Store<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> From<slab::Slab<T>> for ShareableSlab<T> {
+impl<T> From<slab::Slab<T>> for Store<T> {
     fn from(value: slab::Slab<T>) -> Self {
         Self(RefCell::new(value))
     }
 }
 
-impl<T> Into<slab::Slab<T>> for ShareableSlab<T> {
+impl<T> Into<slab::Slab<T>> for Store<T> {
     fn into(self) -> slab::Slab<T> {
         self.0.into_inner()
     }
 }
 
-impl<'a, T> SlabView<T> for &'a ShareableSlab<T> {
+impl<'a, T> StoreView<T> for &'a Store<T> {
     type Index = usize;
     type Ref<'b, U: ?Sized + 'b> = Ref<'b, U> where Self: 'b;
 
@@ -52,7 +52,7 @@ impl<'a, T> SlabView<T> for &'a ShareableSlab<T> {
     }
 }
 
-impl<'a, T> Slab<T> for &'a ShareableSlab<T> {
+impl<'a, T> crate::generic::store::Store<T> for &'a Store<T> {
     type RefMut<'b, U: ?Sized + 'b> = RefMut<'b, U> where Self: 'b;
 
     #[inline]

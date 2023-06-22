@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::generic::slab::Index;
+use crate::generic::store::Index;
 
 use super::Offset;
 

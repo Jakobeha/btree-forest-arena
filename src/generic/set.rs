@@ -1,4 +1,4 @@
-use crate::generic::{map, node::Node, BTreeMap, SlabView, Slab};
+use crate::generic::{map, node::Node, BTreeMap, StoreView, Store};
 use std::{
 	borrow::Borrow,
 	cmp::Ordering,
@@ -8,7 +8,7 @@ use std::{
 };
 use std::collections::hash_map::DefaultHasher;
 use std::ops::Deref;
-use crate::generic::slab::{Index, OwnedSlab, Ref};
+use crate::generic::store::{Index, OwnedSlab, Ref};
 
 /// A set based on a B-Tree.
 ///
@@ -21,12 +21,12 @@ use crate::generic::slab::{Index, OwnedSlab, Ref};
 /// [`Ord`]: Ord
 /// [`Cell`]: core::cell::Cell
 /// [`RefCell`]: core::cell::RefCell
-pub struct BTreeSet<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+pub struct BTreeSet<T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> {
 	map: BTreeMap<T, (), I, C>,
 }
 
 /// `Deref`-able pointer to an element in a [BTreeSet]
-pub type ElemRef<'a, T, I, C> = <<C as SlabView<Node<T, (), I>>>::Ref<'a, Node<T, (), I>> as Ref<'a, Node<T, (), I>>>::Mapped<T>;
+pub type ElemRef<'a, T, I, C> = <<C as StoreView<Node<T, (), I>>>::Ref<'a, Node<T, (), I>> as Ref<'a, Node<T, (), I>>>::Mapped<T>;
 
 /// `Deref`-able pointer to an element in one of 2 [BTreeSet]s
 pub struct EitherElemRef<
@@ -34,8 +34,8 @@ pub struct EitherElemRef<
 	T: 'a,
 	I: Index + 'a,
 	J: Index + 'a,
-	C: SlabView<Node<T, (), I>, Index=I> + 'a,
-	D: SlabView<Node<T, (), J>, Index=J> + 'a
+	C: StoreView<Node<T, (), I>, Index=I> + 'a,
+	D: StoreView<Node<T, (), J>, Index=J> + 'a
 >(_EitherElemRef<'a, T, I, J, C, D>);
 
 pub enum _EitherElemRef<
@@ -43,8 +43,8 @@ pub enum _EitherElemRef<
 	T: 'a,
 	I: Index + 'a,
 	J: Index + 'a,
-	C: SlabView<Node<T, (), I>, Index=I> + 'a,
-	D: SlabView<Node<T, (), J>, Index=J> + 'a
+	C: StoreView<Node<T, (), I>, Index=I> + 'a,
+	D: StoreView<Node<T, (), J>, Index=J> + 'a
 > {
 	Left(ElemRef<'a, T, I, C>),
 	Right(ElemRef<'a, T, J, D>)
@@ -55,8 +55,8 @@ impl<
 	T,
 	I: Index,
 	J: Index,
-	C: SlabView<Node<T, (), I>, Index=I>,
-	D: SlabView<Node<T, (), J>, Index=J>
+	C: StoreView<Node<T, (), I>, Index=I>,
+	D: StoreView<Node<T, (), J>, Index=J>
 > EitherElemRef<'a, T, I, J, C, D> {
 	pub fn left(left: ElemRef<'a, T, I, C>) -> Self {
 		Self(_EitherElemRef::Left(left))
@@ -81,8 +81,8 @@ impl<
 	T,
 	I: Index,
 	J: Index,
-	C: SlabView<Node<T, (), I>, Index=I>,
-	D: SlabView<Node<T, (), J>, Index=J>
+	C: StoreView<Node<T, (), I>, Index=I>,
+	D: StoreView<Node<T, (), J>, Index=J>
 > Deref for EitherElemRef<'a, T, I, J, C, D> {
 	type Target = T;
 
@@ -94,7 +94,7 @@ impl<
 	}
 }
 
-impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
+impl<T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Makes a new, empty `BTreeSet` in a new allocator.
 	///
 	/// # Example
@@ -160,7 +160,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	}
 }
 
-impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Default> Default for BTreeSet<T, I, C> {
+impl<T, I: Index, C: StoreView<Node<T, (), I>, Index=I> + Default> Default for BTreeSet<T, I, C> {
 	fn default() -> Self {
 		BTreeSet {
 			map: BTreeMap::default(),
@@ -168,7 +168,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Default> Default for BT
 	}
 }
 
-impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
+impl<T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Gets an iterator that visits the values in the `BTreeSet` in ascending order.
 	///
 	/// # Examples
@@ -204,7 +204,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	}
 }
 
-impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
+impl<T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Returns `true` if the set contains a value.
 	///
 	/// The value may be any borrowed form of the set's value type,
@@ -296,7 +296,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(union, [1, 2]);
 	/// ```
 	#[inline]
-	pub fn union<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn union<'a, J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&'a self,
 		other: &'a BTreeSet<T, J, D>,
 	) -> Union<'a, T, I, J, C, D> {
@@ -327,7 +327,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(intersection, [2]);
 	/// ```
 	#[inline]
-	pub fn intersection<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn intersection<'a, J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&'a self,
 		other: &'a BTreeSet<T, J, D>,
 	) -> Intersection<'a, T, I, J, C, D> {
@@ -358,7 +358,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(diff, [1]);
 	/// ```
 	#[inline]
-	pub fn difference<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn difference<'a, J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&'a self,
 		other: &'a BTreeSet<T, J, D>,
 	) -> Difference<'a, T, I, J, C, D> {
@@ -389,7 +389,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(sym_diff, [1, 3]);
 	/// ```
 	#[inline]
-	pub fn symmetric_difference<'a, J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn symmetric_difference<'a, J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&'a self,
 		other: &'a BTreeSet<T, J, D>,
 	) -> SymmetricDifference<'a, T, I, J, C, D> {
@@ -417,7 +417,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(a.is_disjoint(&b), false);
 	/// ```
 	#[inline]
-	pub fn is_disjoint<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn is_disjoint<J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&self,
 		other: &BTreeSet<T, J, D>
 	) -> bool where T: Ord {
@@ -442,7 +442,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(set.is_subset(&sup), false);
 	/// ```
 	#[inline]
-	pub fn is_subset<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(&self, other: &BTreeSet<T, J, D>) -> bool where T: Ord {
+	pub fn is_subset<J: Index, D: StoreView<Node<T, (), J>, Index=J>>(&self, other: &BTreeSet<T, J, D>) -> bool where T: Ord {
 		self.difference(other).next().is_none()
 	}
 
@@ -467,7 +467,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// assert_eq!(set.is_superset(&sub), true);
 	/// ```
 	#[inline]
-	pub fn is_superset<J: Index, D: SlabView<Node<T, (), J>, Index=J>>(
+	pub fn is_superset<J: Index, D: StoreView<Node<T, (), J>, Index=J>>(
 		&self,
 		other: &BTreeSet<T, J, D>
 	) -> bool where T: Ord {
@@ -515,7 +515,7 @@ impl<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	}
 }
 
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> BTreeSet<T, I, C> {
 	/// Clears the set, removing all values.
 	///
 	/// # Examples
@@ -753,16 +753,16 @@ impl<T: Ord, I: Index, C: OwnedSlab<Node<T, (), I>, Index=I> + Default> BTreeSet
 	}
 }
 
-impl<'a, T: Ord, I: Index, C> BTreeSet<T, I, &'a C> where &'a C: Slab<Node<T, (), I>, Index=I> {
+impl<'a, T: Ord, I: Index, C> BTreeSet<T, I, &'a C> where &'a C: Store<Node<T, (), I>, Index=I> {
 	/// Asserts that `self` and `other` have the same store. Then, moves all elements from `other`
 	/// into `Self`, leaving `other` empty.
 	///
 	/// # Example
 	///
 	/// ```
-	/// use btree_store::shareable_slab::{BTreeSet, ShareableSlab};
+	/// use btree_store::shareable_slab::{BTreeSet, Store};
 	///
-	/// let data = ShareableSlab::new();
+	/// let data = Store::new();
 	///
 	/// let mut a = BTreeSet::new_in(&data);
 	/// a.insert(1);
@@ -791,7 +791,7 @@ impl<'a, T: Ord, I: Index, C> BTreeSet<T, I, &'a C> where &'a C: Slab<Node<T, ()
 	}
 }
 
-impl<T: Clone, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Clone> Clone for BTreeSet<T, I, C> {
+impl<T: Clone, I: Index, C: StoreView<Node<T, (), I>, Index=I> + Clone> Clone for BTreeSet<T, I, C> {
 	#[inline]
 	fn clone(&self) -> Self {
 		BTreeSet {
@@ -805,7 +805,7 @@ impl<T: Clone, I: Index, C: SlabView<Node<T, (), I>, Index=I> + Clone> Clone for
 	}
 }
 
-impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J> + Default> FromIterator<T> for BTreeSet<T, J, C> {
+impl<T: Ord, J: Index, C: Store<Node<T, (), J>, Index=J> + Default> FromIterator<T> for BTreeSet<T, J, C> {
 	#[inline]
 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
 		let mut set = BTreeSet::new();
@@ -814,7 +814,7 @@ impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J> + Default> FromIterator<
 	}
 }
 
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for BTreeSet<T, I, C> {
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> IntoIterator for BTreeSet<T, I, C> {
 	type Item = T;
 	type IntoIter = IntoIter<T, I, C>;
 
@@ -826,7 +826,7 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for BTreeSet<T,
 	}
 }
 
-impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for &'a BTreeSet<T, I, C> {
+impl<'a, T, I: Index, C: Store<Node<T, (), I>, Index=I>> IntoIterator for &'a BTreeSet<T, I, C> {
 	type Item = ElemRef<'a, T, I, C>;
 	type IntoIter = Iter<'a, T, I, C>;
 
@@ -836,7 +836,7 @@ impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>> IntoIterator for &'a BTr
 	}
 }
 
-impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J>> Extend<T> for BTreeSet<T, J, C> {
+impl<T: Ord, J: Index, C: Store<Node<T, (), J>, Index=J>> Extend<T> for BTreeSet<T, J, C> {
 	#[inline]
 	fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
 		for t in iter {
@@ -845,7 +845,7 @@ impl<T: Ord, J: Index, C: Slab<Node<T, (), J>, Index=J>> Extend<T> for BTreeSet<
 	}
 }
 
-impl<'a, T: 'a + Ord + Copy, J: Index, C: Slab<Node<T, (), J>, Index=J>> Extend<&'a T> for BTreeSet<T, J, C> {
+impl<'a, T: 'a + Ord + Copy, J: Index, C: Store<Node<T, (), J>, Index=J>> Extend<&'a T> for BTreeSet<T, J, C> {
 	#[inline]
 	fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
 		self.extend(iter.into_iter().copied())
@@ -857,8 +857,8 @@ impl<
 	L: PartialEq<T>,
 	I: Index,
 	J: Index + PartialEq<I>,
-	C: SlabView<Node<T, (), I>, Index=I>,
-	D: SlabView<Node<L, (), J>, Index=J>
+	C: StoreView<Node<T, (), I>, Index=I>,
+	D: StoreView<Node<L, (), J>, Index=J>
 > PartialEq<BTreeSet<L, J, D>> for BTreeSet<T, I, C> {
 	#[inline]
 	fn eq(&self, other: &BTreeSet<L, J, D>) -> bool {
@@ -866,15 +866,15 @@ impl<
 	}
 }
 
-impl<T: Eq, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Eq for BTreeSet<T, I, C> {}
+impl<T: Eq, I: Index, C: StoreView<Node<T, (), I>, Index=I>> Eq for BTreeSet<T, I, C> {}
 
 impl<
 	T,
 	L: PartialOrd<T>,
 	I: Index,
 	J: Index + PartialOrd<I>,
-	C: SlabView<Node<T, (), I>, Index=I>,
-	D: SlabView<Node<L, (), J>, Index=J>
+	C: StoreView<Node<T, (), I>, Index=I>,
+	D: StoreView<Node<L, (), J>, Index=J>
 > PartialOrd<BTreeSet<L, J, D>>
 	for BTreeSet<T, I, C> {
 	#[inline]
@@ -883,25 +883,25 @@ impl<
 	}
 }
 
-impl<T: Ord, I: Index + Ord, C: SlabView<Node<T, (), I>, Index=I>> Ord for BTreeSet<T, I, C> {
+impl<T: Ord, I: Index + Ord, C: StoreView<Node<T, (), I>, Index=I>> Ord for BTreeSet<T, I, C> {
 	#[inline]
 	fn cmp(&self, other: &BTreeSet<T, I, C>) -> Ordering {
 		self.map.cmp(&other.map)
 	}
 }
 
-impl<T: Hash, I: Index + Hash, C: SlabView<Node<T, (), I>, Index=I>> Hash for BTreeSet<T, I, C> {
+impl<T: Hash, I: Index + Hash, C: StoreView<Node<T, (), I>, Index=I>> Hash for BTreeSet<T, I, C> {
 	#[inline]
 	fn hash<H: Hasher>(&self, h: &mut H) {
 		self.map.hash(h)
 	}
 }
 
-pub struct Iter<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+pub struct Iter<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> {
 	inner: map::Keys<'a, T, (), I, C>,
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Iter<'a, T, I, C> {
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> Iterator for Iter<'a, T, I, C> {
 	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
@@ -915,21 +915,21 @@ impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Iter<'a
 	}
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Iter<'a, T, I, C> {
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Iter<'a, T, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<ElemRef<'a, T, I, C>> {
 		self.inner.next_back()
 	}
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> FusedIterator for Iter<'a, T, I, C> {}
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> ExactSizeIterator for Iter<'a, T, I, C> {}
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> FusedIterator for Iter<'a, T, I, C> {}
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> ExactSizeIterator for Iter<'a, T, I, C> {}
 
-pub struct IntoIter<T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+pub struct IntoIter<T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> {
 	inner: map::IntoKeys<T, (), I, C>,
 }
 
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> Iterator for IntoIter<T, I, C> {
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> Iterator for IntoIter<T, I, C> {
 	type Item = T;
 
 	#[inline]
@@ -943,22 +943,22 @@ impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> Iterator for IntoIter<T, I, 
 	}
 }
 
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> DoubleEndedIterator for IntoIter<T, I, C> {
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> DoubleEndedIterator for IntoIter<T, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<T> {
 		self.inner.next_back()
 	}
 }
 
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> FusedIterator for IntoIter<T, I, C> {}
-impl<T, I: Index, C: Slab<Node<T, (), I>, Index=I>> ExactSizeIterator for IntoIter<T, I, C> {}
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> FusedIterator for IntoIter<T, I, C> {}
+impl<T, I: Index, C: Store<Node<T, (), I>, Index=I>> ExactSizeIterator for IntoIter<T, I, C> {}
 
-pub struct Union<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+pub struct Union<'a, T, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> {
 	it1: Peekable<Iter<'a, T, I, C>>,
 	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Union<'a, T, I, J, C, D> {
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> Iterator for Union<'a, T, I, J, C, D> {
 	type Item = EitherElemRef<'a, T, I, J, C, D>;
 
 	#[inline]
@@ -987,14 +987,14 @@ impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: Sl
 	}
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator for Union<'a, T, I, J, C, D> {}
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> FusedIterator for Union<'a, T, I, J, C, D> {}
 
-pub struct Intersection<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+pub struct Intersection<'a, T, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> {
 	it1: Iter<'a, T, I, C>,
 	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Intersection<'a, T, I, J, C, D> {
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> Iterator for Intersection<'a, T, I, J, C, D> {
 	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
@@ -1033,15 +1033,15 @@ impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: Sl
 	}
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> FusedIterator
 	for Intersection<'a, T, I, J, C, D> {}
 
-pub struct Difference<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+pub struct Difference<'a, T, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> {
 	it1: Iter<'a, T, I, C>,
 	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator for Difference<'a, T, I, J, C, D> {
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> Iterator for Difference<'a, T, I, J, C, D> {
 	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
@@ -1080,15 +1080,15 @@ impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: Sl
 	}
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> FusedIterator
 	for Difference<'a, T, I, J, C, D> {}
 
-pub struct SymmetricDifference<'a, T, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> {
+pub struct SymmetricDifference<'a, T, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> {
 	it1: Peekable<Iter<'a, T, I, C>>,
 	it2: Peekable<Iter<'a, T, J, D>>,
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> Iterator
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> Iterator
 	for SymmetricDifference<'a, T, I, J, C, D> {
 	type Item = EitherElemRef<'a, T, I, J, C, D>;
 
@@ -1120,15 +1120,15 @@ impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: Sl
 	}
 }
 
-impl<'a, T: Ord, I: Index, J: Index, C: SlabView<Node<T, (), I>, Index=I>, D: SlabView<Node<T, (), J>, Index=J>> FusedIterator
+impl<'a, T: Ord, I: Index, J: Index, C: StoreView<Node<T, (), I>, Index=I>, D: StoreView<Node<T, (), J>, Index=J>> FusedIterator
 	for SymmetricDifference<'a, T, I, J, C, D> {}
 
-pub struct DrainFilter<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> {
+pub struct DrainFilter<'a, T, I: Index, C: Store<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> {
 	pred: F,
 	inner: map::DrainFilterInner<'a, T, (), I, C>,
 }
 
-impl<'a, T: 'a, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> DrainFilter<'a, T, I, C, F> {
+impl<'a, T: 'a, I: Index, C: Store<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> DrainFilter<'a, T, I, C, F> {
 	#[inline]
 	pub fn new(set: &'a mut BTreeSet<T, I, C>, pred: F) -> Self {
 		DrainFilter {
@@ -1138,9 +1138,9 @@ impl<'a, T: 'a, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool
 	}
 }
 
-impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> FusedIterator for DrainFilter<'a, T, I, C, F> {}
+impl<'a, T, I: Index, C: Store<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> FusedIterator for DrainFilter<'a, T, I, C, F> {}
 
-impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, I, C, F> {
+impl<'a, T, I: Index, C: Store<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, I, C, F> {
 	type Item = T;
 
 	#[inline]
@@ -1155,7 +1155,7 @@ impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> It
 	}
 }
 
-impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Drop for DrainFilter<'a, T, I, C, F> {
+impl<'a, T, I: Index, C: Store<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Drop for DrainFilter<'a, T, I, C, F> {
 	fn drop(&mut self) {
 		loop {
 			if self.next().is_none() {
@@ -1165,11 +1165,11 @@ impl<'a, T, I: Index, C: Slab<Node<T, (), I>, Index=I>, F: FnMut(&T) -> bool> Dr
 	}
 }
 
-pub struct Range<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> {
+pub struct Range<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> {
 	inner: map::Range<'a, T, (), I, C>,
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Range<'a, T, I, C> {
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> Iterator for Range<'a, T, I, C> {
 	type Item = ElemRef<'a, T, I, C>;
 
 	#[inline]
@@ -1183,11 +1183,11 @@ impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> Iterator for Range<'
 	}
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Range<'a, T, I, C> {
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> DoubleEndedIterator for Range<'a, T, I, C> {
 	#[inline]
 	fn next_back(&mut self) -> Option<ElemRef<'a, T, I, C>> {
 		self.inner.next_back().map(|kv| kv.into_key_ref())
 	}
 }
 
-impl<'a, T, I: Index, C: SlabView<Node<T, (), I>, Index=I>> FusedIterator for Range<'a, T, I, C> {}
+impl<'a, T, I: Index, C: StoreView<Node<T, (), I>, Index=I>> FusedIterator for Range<'a, T, I, C> {}
