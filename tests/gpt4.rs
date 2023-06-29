@@ -1,10 +1,10 @@
-//! These tests were generated with the help of GPT-4 (only gave other tests as input), although
+/*//! These tests were generated with the help of GPT-4 (only gave other tests as input), although
 //! they needed a lot of fixing
-#![cfg(feature = "concurrent-shareable-slab")]
 use std::thread;
 
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
+use btree_forest_arena::{BTreeMap, BTreeSet, BTreeStore};
 
 use btree_store::concurrent_shareable_slab::{BTreeMap, BTreeSet, Store};
 
@@ -36,10 +36,10 @@ const KV_ELEMS: [(usize, &'static str); 10] = [
 
 #[test]
 fn shared_between_maps_and_sets_same_thread() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
-    let mut map = BTreeMap::new_in(&slab);
-    let mut set = BTreeSet::new_in(&slab);
+    let mut map = BTreeMap::new_in(&store);
+    let mut set = BTreeSet::new_in(&store);
 
     for &elem in ELEMS.iter() {
         map.insert(elem, ());
@@ -65,11 +65,11 @@ fn shared_between_maps_and_sets_same_thread() {
 
 #[test]
 fn shared_between_maps_and_sets_concurrent_threads() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
     thread::scope(|scope| {
         let map_thread = scope.spawn(|| {
-            let mut map = BTreeMap::new_in(&slab);
+            let mut map = BTreeMap::new_in(&store);
 
             for &elem in ELEMS.iter() {
                 map.insert(elem, ());
@@ -80,7 +80,7 @@ fn shared_between_maps_and_sets_concurrent_threads() {
         });
 
         let set_thread = scope.spawn(|| {
-            let mut set = BTreeSet::new_in(&slab);
+            let mut set = BTreeSet::new_in(&store);
 
             for &elem in ELEMS.iter() {
                 set.insert(elem);
@@ -98,12 +98,12 @@ fn shared_between_maps_and_sets_concurrent_threads() {
 
 #[test]
 fn shared_concurrent_maps_insertion_and_removal() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
     thread::scope(|scope| {
         let map1_thread = scope.spawn(|| {
             let mut rng = SmallRng::from_seed([66; 32]);
-            let mut map1 = BTreeMap::new_in(&slab);
+            let mut map1 = BTreeMap::new_in(&store);
 
             for (key, value) in KV_ELEMS.iter() {
                 map1.insert(*key, *value);
@@ -121,7 +121,7 @@ fn shared_concurrent_maps_insertion_and_removal() {
 
         let map2_thread = scope.spawn(|| {
             let mut rng = SmallRng::from_seed([99; 32]);
-            let mut map2 = BTreeMap::new_in(&slab);
+            let mut map2 = BTreeMap::new_in(&store);
 
             for (key, value) in KV_ELEMS.iter() {
                 map2.insert(*key, *value);
@@ -145,11 +145,11 @@ fn shared_concurrent_maps_insertion_and_removal() {
 
 #[test]
 fn shared_maps_set_clear_same_thread() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
-    let mut map1 = BTreeMap::new_in(&slab);
-    let mut map2 = BTreeMap::new_in(&slab);
-    let mut set = BTreeSet::new_in(&slab);
+    let mut map1 = BTreeMap::new_in(&store);
+    let mut map2 = BTreeMap::new_in(&store);
+    let mut set = BTreeSet::new_in(&store);
 
     for &elem in ELEMS.iter() {
         map1.insert(elem, ());
@@ -178,9 +178,9 @@ fn shared_maps_set_clear_same_thread() {
 
 #[test]
 fn shared_maps_entry_api_same_thread() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
-    let mut map1 = BTreeMap::new_in(&slab);
+    let mut map1 = BTreeMap::new_in(&store);
 
     for (key, value) in KV_ELEMS.iter() {
         map1.insert(*key, *value);
@@ -197,11 +197,11 @@ fn shared_maps_entry_api_same_thread() {
 
 #[test]
 fn shared_maps_entry_api_concurrent_threads() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
     thread::scope(|scope| {
         let map_thread1 = scope.spawn(|| {
-            let mut map1 = BTreeMap::new_in(&slab);
+            let mut map1 = BTreeMap::new_in(&store);
 
             for (key, value) in KV_ELEMS.iter() {
                 map1.insert(*key, *value);
@@ -219,7 +219,7 @@ fn shared_maps_entry_api_concurrent_threads() {
         });
 
         let map_thread2 = scope.spawn(|| {
-            let mut map2 = BTreeMap::new_in(&slab);
+            let mut map2 = BTreeMap::new_in(&store);
 
             for (key, value) in KV_ELEMS.iter() {
                 map2.insert(*key, *value);
@@ -245,10 +245,10 @@ fn shared_maps_entry_api_concurrent_threads() {
 
 #[test]
 fn shared_sets_operations_same_thread() {
-    let slab = Store::new();
+    let store = BTreeStore::new();
 
-    let mut set1 = BTreeSet::new_in(&slab);
-    let mut set2 = BTreeSet::new_in(&slab);
+    let mut set1 = BTreeSet::new_in(&store);
+    let mut set2 = BTreeSet::new_in(&store);
 
     for &elem in ELEMS.iter() {
         set1.insert(elem);
@@ -291,4 +291,4 @@ fn shared_sets_operations_same_thread() {
             .chain([56, 67, 78, 89, 910, 1011])
             .collect::<Vec<_>>()
     )
-}
+}*/

@@ -1,23 +1,9 @@
 extern crate rand;
 
 use std::collections::BTreeMap as StdBTreeMap;
-use std::ops::Deref;
+use btree_forest_arena::{BTreeStore, BTreeMap as MyBTreeMap};
 
 use rand::{Rng, rngs::SmallRng, SeedableRng};
-
-#[cfg(feature = "concurrent-shareable-slab")]
-use btree_store::concurrent_shareable_slab::BTreeMap as ConcurrentShareableSlabBTreeMap;
-use btree_store::generic::{Node, StoreView};
-use btree_store::generic::map::KeyValueRef;
-use btree_store::generic::store::Index;
-#[cfg(feature = "shareable-slab")]
-use btree_store::shareable_slab::BTreeMap as ShareableSlabBTreeMap;
-#[cfg(feature = "shareable-slab-arena")]
-use btree_store::shareable_slab_arena::BTreeMap as ShareableSlabArenaBTreeMap;
-#[cfg(feature = "shareable-slab-simultaneous-mutation")]
-use btree_store::shareable_slab_simultaneous_mutation::BTreeMap as ShareableSlabSimultaneousMutationBTreeMap;
-#[cfg(feature = "slab")]
-use btree_store::slab::BTreeMap as SlabBTreeMap;
 
 // region benchmark abstraction / implementation
 trait Bencher {
@@ -53,146 +39,84 @@ impl Bencher for MockBencher {
 // endregion
 
 // region map abstraction
-trait Entry<'a, K, V> {
-    fn key(&self) -> &K;
-    fn value(&self) -> &V;
-}
-
-impl<'a, K, V> Entry<'a, K, V> for (&'a K, &'a V) {
-    fn key(&self) -> &K {
-        self.0
-    }
-
-    fn value(&self) -> &V {
-        self.1
-    }
-}
-
-impl<'a, K, V, I: Index, C: StoreView<Node<K, V, I>, Index=I>> Entry<'a, K, V> for KeyValueRef<'a, K, V, I, C> {
-    fn key(&self) -> &K {
-        self.key()
-    }
-
-    fn value(&self) -> &V {
-        self.value()
-    }
-}
-
 trait BTreeMap<'store, K: Ord + 'store, V: 'store>: 'store {
-    /// `()` if owned
+    /// `()` if the store is owned
     type SharedStore: Default;
-    type Entry<'a>: Entry<'a, K, V> where 'store: 'a;
-    type Ref<'a>: Deref<Target=V> where 'store: 'a;
-    type Iter<'a>: Iterator<Item = Self::Entry<'a>> where 'store: 'a;
-    type Range<'a>: Iterator<Item = Self::Entry<'a>> where 'store: 'a;
+    type Iter<'a>: Iterator<Item = (&'a K, &'a V)> where 'store: 'a;
+    type Range<'a>: Iterator<Item = (&'a K, &'a V)> where 'store: 'a;
 
     fn new_in(store: &'store Self::SharedStore) -> Self;
     fn insert(&mut self, key: K, value: V) -> Option<V>;
     fn remove(&mut self, key: &K) -> Option<V>;
     fn remove_first(&mut self) -> Option<(K, V)>;
     fn is_empty(&self) -> bool;
-    fn first<'a>(&'a self) -> Option<Self::Entry<'a>> where 'store: 'a;
-    fn get<'a>(&'a self, key: &K) -> Option<Self::Ref<'a>> where 'store: 'a;
+    fn first<'a>(&'a self) -> Option<(&'a K, &'a V)> where 'store: 'a;
+    fn get<'a>(&'a self, key: &K) -> Option<&'a V> where 'store: 'a;
     fn iter<'a>(&'a self) -> Self::Iter<'a> where 'store: 'a;
     fn range<'a>(&'a self, range: std::ops::Range<K>) -> Self::Range<'a> where 'store: 'a;
 }
 // endregion
 
 // region map implementation
-macro_rules! impl_b_tree_map_new_in {
-    ($Ident:ident) => {
-        fn new_in(_: &Self::SharedStore) -> Self {
-            $Ident::new()
+macro_rules! impl_b_tree_map_common {
+    ($store:lifetime, $K:ident, $V:ident) => {
+        fn insert(&mut self, key: $K, value: $V) -> Option<$V> {
+            self.insert(key, value)
         }
-    };
-    ($Ident:ident<$store:lifetime>) => {
-        fn new_in(store: &$store Self::SharedStore) -> Self {
-            $Ident::new_in(store)
+
+        fn remove_first(&mut self) -> Option<($K, $V)> {
+            self.pop_first()
         }
-    };
-}
 
-macro_rules! impl_b_tree_map_ref {
-    (Entry, $a:lifetime, $K:ident, $V:ident, $I:ty, $C:ty) => {
-        btree_store::generic::map::KeyValueRef<$a, $K, $V, $I, $C>
-    };
-    (Ref, $a:lifetime, $K:ident, $V:ident, $I:ty, $C:ty) => {
-        btree_store::generic::map::ValueRef<$a, $K, $V, $I, $C>
-    };
-    (Entry, $a:lifetime, $K:ident, $V:ident) => {
-        (&$a $K, &$a $V)
-    };
-    (Ref, $a:lifetime, $K:ident, $V:ident) => {
-        &$a $V
-    };
-}
+        fn remove(&mut self, key: &$K) -> Option<$V> {
+            self.remove(key)
+        }
 
-macro_rules! impl_b_tree_map {
-    ($Ident:ident, $($package:ident)::+) => {
-        impl_b_tree_map!(<'store, K, V> $Ident, $($package)::+, ());
-    };
-    ($Ident:ident, $($package:ident)::+, $I:ty, $($C:ident)::+) => {
-        impl_b_tree_map!(<'store, K, V> $Ident, $($package)::+, (), $I, $($C)::+<Node<K, V, $I>>);
-    };
-    ($Ident:ident, $($package:ident)::+, $I:ty, &'store $($C:ident)::+) => {
-        impl_b_tree_map!(<'store, K, V> $Ident<'store>, $($package)::+, $($C)::+<Node<K, V, $I>>, $I, &'store $($C)::+<Node<K, V, $I>>);
-    };
-    (<$store:lifetime, $K:ident, $V:ident> $Ident:ident $(<$store2:lifetime>)?, $($package:ident)::+, $SharedStore:ty $(, $I:ty, $C:ty)?) => {
-        impl<$store, $K: Ord + $store, $V: $store> BTreeMap<$store, $K, $V> for $Ident<$($store2,)? $K, $V> {
-            type SharedStore = $SharedStore;
-            type Entry<'a> = impl_b_tree_map_ref!(Entry, 'a, $K, $V $(, $I, $C)?) where $store: 'a;
-            type Ref<'a> = impl_b_tree_map_ref!(Ref, 'a, $K, $V $(, $I, $C)?) where $store: 'a;
-            type Iter<'a> = $($package)::+::Iter<'a, $K, $V $(, $I, $C)?> where $store: 'a;
-            type Range<'a> = $($package)::+::Range<'a, $K, $V $(, $I, $C)?> where $store: 'a;
+        fn is_empty(&self) -> bool {
+            self.is_empty()
+        }
 
-            impl_b_tree_map_new_in!($Ident$(<$store2>)?);
+        fn first<'a>(&'a self) -> Option<(&'a K, &'a V)> where $store: 'a {
+            self.first_key_value()
+        }
 
-            fn insert(&mut self, key: $K, value: $V) -> Option<$V> {
-                $Ident::insert(self, key, value)
-            }
+        fn get<'a>(&'a self, key: &$K) -> Option<&'a V> where $store: 'a {
+            self.get(key)
+        }
 
-            fn remove_first(&mut self) -> Option<($K, $V)> {
-                $Ident::pop_first(self)
-            }
+        fn iter<'a>(&'a self) -> Self::Iter<'a> where $store: 'a {
+            self.iter()
+        }
 
-            fn remove(&mut self, key: &$K) -> Option<$V> {
-                $Ident::remove(self, key)
-            }
-
-            fn is_empty(&self) -> bool {
-                $Ident::is_empty(self)
-            }
-
-            fn first<'a>(&'a self) -> Option<Self::Entry<'a>> where $store: 'a {
-                $Ident::first_key_value(self)
-            }
-
-            fn get<'a>(&'a self, key: &$K) -> Option<Self::Ref<'a>> where $store: 'a {
-                $Ident::get(self, key)
-            }
-
-            fn iter<'a>(&'a self) -> Self::Iter<'a> where $store: 'a {
-                $Ident::iter(self)
-            }
-
-            fn range<'a>(&'a self, range: std::ops::Range<$K>) -> Self::Range<'a> where $store: 'a {
-                $Ident::range(self, range)
-            }
+        fn range<'a>(&'a self, range: std::ops::Range<$K>) -> Self::Range<'a> where $store: 'a {
+            self.range(range)
         }
     }
 }
 
-impl_b_tree_map!(StdBTreeMap, std::collections::btree_map);
-#[cfg(feature = "slab")]
-impl_b_tree_map!(SlabBTreeMap, btree_store::generic::map, usize, slab::Slab);
-#[cfg(feature = "shareable-slab")]
-impl_b_tree_map!(ShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab::Store);
-#[cfg(feature = "concurrent-shareable-slab")]
-impl_b_tree_map!(ConcurrentShareableSlabBTreeMap, btree_store::generic::map, usize, &'store btree_store::concurrent_shareable_slab::Store);
-#[cfg(feature = "shareable-slab-simultaneous-mutation")]
-impl_b_tree_map!(ShareableSlabSimultaneousMutationBTreeMap, btree_store::generic::map, usize, &'store btree_store::shareable_slab_simultaneous_mutation::Store);
-#[cfg(feature = "shareable-slab-arena")]
-impl_b_tree_map!(ShareableSlabArenaBTreeMap, btree_store::generic::map, btree_store::shareable_slab_arena::Index, &'store btree_store::shareable_slab_arena::Store);
+impl<'store, K: Ord + 'store, V: 'store> BTreeMap<'store, K, V> for StdBTreeMap<K, V> {
+    type SharedStore = ();
+    type Iter<'a> = std::collections::btree_map::Iter<'a, K, V> where 'store: 'a;
+    type Range<'a> = std::collections::btree_map::Range<'a, K, V> where 'store: 'a;
+
+    fn new_in(&(): &'store Self::SharedStore) -> Self {
+        Self::new()
+    }
+
+    impl_b_tree_map_common!('store, K, V);
+}
+
+impl<'store, K: Clone + Ord + 'store, V: 'store> BTreeMap<'store, K, V> for MyBTreeMap<'store, K, V> {
+    type SharedStore = BTreeStore<K, V>;
+    type Iter<'a> = btree_forest_arena::map::Iter<'a, K, V> where 'store: 'a;
+    type Range<'a> = btree_forest_arena::map::Range<'a, K, V> where 'store: 'a;
+
+    fn new_in(store: &'store Self::SharedStore) -> Self {
+        Self::new_in(store)
+    }
+
+    impl_b_tree_map_common!('store, K, V);
+}
 // endregion
 
 //noinspection RsUnnecessaryQualifications (IntelliJ is bugged)
@@ -241,8 +165,8 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>, B: Bencher>(
 
         // Iterate all
         for map in &mut maps {
-            for kv in map.iter() {
-                B::black_box((kv.key(), kv.value()));
+            for (&key, &value) in map.iter() {
+                B::black_box((key, value));
             }
         }
 
@@ -254,8 +178,8 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>, B: Bencher>(
                 false => key1..key0,
                 true => key0..key1,
             };
-            for kv in map.range(range) {
-                B::black_box((kv.key(), kv.value()));
+            for (&key, &value) in map.range(range) {
+                B::black_box((key, value));
             }
         }
 
@@ -315,16 +239,7 @@ macro_rules! generate_benches {
         $(
             generate_bench_group!($bench_name: ($n_maps, $n_operations), {
                 std_b_tree_map: StdBTreeMap<usize, usize>,
-                #[cfg(feature = "slab")]
-                slab_b_tree_map: SlabBTreeMap<usize, usize>,
-                #[cfg(feature = "shareable-slab")]
-                shareable_slab_b_tree_map: ShareableSlabBTreeMap<'_, usize, usize>,
-                #[cfg(feature = "concurrent-shareable-slab")]
-                concurrent_shareable_slab_b_tree_map: ConcurrentShareableSlabBTreeMap<'_, usize, usize>,
-                #[cfg(feature = "shareable-slab-simultaneous-mutation")]
-                shareable_slab_simultaneous_mutation_b_tree_map: ShareableSlabSimultaneousMutationBTreeMap<'_, usize, usize>,
-                #[cfg(feature = "shareable-slab-arena")]
-                shareable_slab_arena_b_tree_map: ShareableSlabArenaBTreeMap<'_, usize, usize>,
+                my_b_tree_map: MyBTreeMap<usize, usize>,
             });
         )*
     };

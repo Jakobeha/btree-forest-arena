@@ -1,17 +1,18 @@
-use btree_store::slab::BTreeMap;
 use std::{cell::Cell, rc::Rc};
+use btree_forest_arena::{BTreeMap, BTreeStore};
 
 #[test]
 pub fn iter() {
-	let mut map = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut map = BTreeMap::new_in(&store);
 	for i in 0..10 {
 		map.insert(i, i);
 	}
 
 	let mut i = 0;
-	for kv in &map {
-		assert_eq!(*kv.key(), i);
-		assert_eq!(*kv.into_key_ref(), i);
+	for (&key, &value) in &map {
+		assert_eq!(key, i);
+		assert_eq!(value, i);
 		i += 1;
 	}
 
@@ -47,7 +48,8 @@ pub fn into_iter() {
 	}
 
 	let counter = Rc::new(Cell::new(0));
-	let mut map = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut map = BTreeMap::new_in(&store);
 	for i in 0..100 {
 		map.insert(i, Element::new(&counter, i));
 	}
@@ -88,7 +90,8 @@ pub fn into_iter_rev() {
 	}
 
 	let counter = Rc::new(Cell::new(0));
-	let mut map = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut map = BTreeMap::new_in(&store);
 	for i in 0..100 {
 		map.insert(i, Element::new(&counter, i));
 	}
@@ -129,7 +132,8 @@ pub fn into_iter_both_ends1() {
 	}
 
 	let counter = Rc::new(Cell::new(0));
-	let mut map = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut map = BTreeMap::new_in(&store);
 	for i in 0..100 {
 		map.insert(i, Element::new(&counter, i));
 	}
@@ -174,7 +178,8 @@ pub fn into_iter_both_ends2() {
 	}
 
 	let counter = Rc::new(Cell::new(0));
-	let mut map = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut map = BTreeMap::new_in(&store);
 	for i in 0..100 {
 		map.insert(i, Element::new(&counter, i));
 	}

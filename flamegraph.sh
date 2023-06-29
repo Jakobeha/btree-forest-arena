@@ -1,6 +1,5 @@
 SCRIPT_PATH=$(dirname "$(realpath "$0")")
-export CARGO_PROFILE_BENCH_DEBUG=true
-sudo cargo flamegraph \
+cargo flamegraph \
   --bench benches \
   --manifest-path "$SCRIPT_PATH/benches/Cargo.toml" \
   --output "$SCRIPT_PATH/benches/target/criterion/report/flamegraph.svg" \
@@ -8,4 +7,4 @@ sudo cargo flamegraph \
   --root \
   --deterministic \
   -- --bench
-sudo chmod -R 775 "$SCRIPT_PATH/benches/target"
+chown -R "$USER" "$SCRIPT_PATH/benches/target"

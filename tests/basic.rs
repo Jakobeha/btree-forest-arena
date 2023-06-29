@@ -1,17 +1,12 @@
-use btree_store::{
-	generic::{
-		map::{BTreeExt, BTreeExtMut},
-		node::Item,
-	},
-	slab::BTreeMap,
-};
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
+use btree_forest_arena::{BTreeMap, BTreeStore};
 
 const SEED: &'static [u8; 32] = b"testseedtestseedtestseedtestseed";
 
 #[test]
 pub fn insert() {
-	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut btree = BTreeMap::new_in(&store);
 
 	for (key, value) in &ITEMS {
 		if let Some(_) = btree.insert(*key, *value) {
@@ -20,12 +15,13 @@ pub fn insert() {
 		btree.validate();
 	}
 
-	assert!(btree.len() == 100);
+	assert_eq!(btree.len(), 100);
 }
 
 #[test]
 pub fn remove() {
-	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut btree = BTreeMap::new_in(&store);
 
 	let mut items = ITEMS;
 
@@ -45,104 +41,9 @@ pub fn remove() {
 }
 
 #[test]
-pub fn item_addresses() {
-	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
-
-	for (key, value) in &ITEMS {
-		btree.insert(*key, *value);
-	}
-
-	for (key, _) in &ITEMS {
-		let addr = btree.address_of(key).ok().unwrap();
-
-		match btree.previous_item_address(addr) {
-			Some(before_addr) => {
-				assert!(before_addr != addr);
-				let addr_again = btree.next_item_address(before_addr).unwrap();
-				assert_eq!(addr_again, addr)
-			}
-			None => (),
-		}
-
-		match btree.next_item_address(addr) {
-			Some(after_addr) => {
-				assert!(after_addr != addr);
-				let addr_again = btree.previous_item_address(after_addr).unwrap();
-				assert_eq!(addr_again, addr)
-			}
-			None => (),
-		}
-	}
-}
-
-// #[test]
-// pub fn valid_addresses() {
-// 	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
-
-// 	for (key, value) in &ITEMS {
-// 		btree.insert(*key, *value);
-// 	}
-
-// 	for (key, _) in &ITEMS {
-// 		let addr = btree.address_of(key).ok().unwrap();
-
-// 		match btree.previous_front_address(addr) {
-// 			Some(before_addr) => {
-// 				assert!(before_addr != addr);
-// 				let addr_again = btree.next_back_address(before_addr).unwrap();
-// 				assert_eq!(addr_again, addr)
-// 			},
-// 			None => ()
-// 		}
-
-// 		let after_addr = btree.next_back_address(addr).unwrap(); // there is always a valid address after an item address.
-// 		assert!(after_addr != addr);
-// 		let addr_again = btree.previous_front_address(after_addr).unwrap();
-// 		assert_eq!(addr_again, addr)
-// 	}
-// }
-
-#[test]
-pub fn insert_addresses() {
-	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
-
-	for (key, value) in &ITEMS {
-		let addr = btree.address_of(key).err().unwrap();
-		let new_addr = btree.insert_exactly_at(addr, Item::new(*key, *value), None);
-		assert_eq!(btree.item(new_addr).unwrap().value(), value);
-	}
-}
-
-#[test]
-pub fn remove_addresses() {
-	let items = ITEMS;
-
-	for k in 1..items.len() {
-		let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
-
-		for (key, value) in &items {
-			btree.insert(*key, *value);
-			if btree.len() == k {
-				break;
-			}
-		}
-
-		for (key, value) in &items {
-			match btree.address_of(key) {
-				Ok(addr) => {
-					let (_, addr) = btree.remove_at(addr).unwrap();
-					btree.insert_at(addr, Item::new(*key, *value));
-					btree.validate();
-				}
-				Err(_) => break,
-			}
-		}
-	}
-}
-
-#[test]
 pub fn update() {
-	let mut btree: BTreeMap<usize, usize> = BTreeMap::new();
+	let store = BTreeStore::new();
+	let mut btree = BTreeMap::new_in(&store);
 
 	for (key, value) in &ITEMS {
 		if key % 2 == 0 {
@@ -154,12 +55,12 @@ pub fn update() {
 		btree.update(*key, |current_value| match current_value {
 			Some(current_value) => {
 				if current_value % 2 == 0 {
-					(None, ())
+					None
 				} else {
-					(Some(10000 - *value), ())
+					Some(10000 - *value)
 				}
 			}
-			None => (Some(*value), ()),
+			None => Some(*value),
 		});
 
 		btree.validate();

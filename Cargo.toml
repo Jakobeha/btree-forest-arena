@@ -1,47 +1,32 @@
 [package]
-name = "btree-store"
-version = "0.6.0"
-authors = ["Timothée Haudebourg <author@haudebourg.net>", "Jakob Hain <jakobeha@fastmail.com>"]
+name = "btree-forest-arena"
+version = "0.1.0"
+authors = ["Jakob Hain <jakobeha@fastmail.com>", "Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2021"
-categories = ["data-structures"]
-keywords = ["btree", "map", "set", "slab"]
-description = "Flexible B-trees whose storage and indexing is abstracted, so they can be stored on the stack, in the same allocator, and in other ways"
-repository = "https://github.com/Jakobeha/btree-store"
-documentation = "https://docs.rs/btree-store"
+categories = ["data-structures", "memory-management"]
+keywords = ["btree", "map", "set", "arena"]
+description = "B-trees backed by a slab/arena to reduce allocations and increase locality"
+repository = "https://github.com/Jakobeha/btree-forest-arena"
+documentation = "https://docs.rs/btree-forest-arena"
+# Benchmarks are in a separate workspace with criterion (see benches/README.md for more)
+exclude = ["benches"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
 autobenches = false
 
+# Benchmarks are additional tests, we run them with the criterion bencher replaced by stubs
 [[test]]
 name = "benchmarks"
 path = "benches/benches.rs"
 harness = true
 
-[workspace]
-exclude = ["benches"]
-
 [features]
-default = ["slab"]
-slab = ["dep:slab"]
-shareable-slab = ["dep:slab"]
-concurrent-shareable-slab = ["dep:slab", "lock_api", "parking_lot"]
-shareable-slab-simultaneous-mutation = []
-shareable-slab-arena = []
-small-slab = []
-array-slab = ["arrayvec"]
-shareable-bump = ["bumpalo"]
+default = []
 dot = []
-utils = []
-_thunderdome_example = ["dep:thunderdome"]
 
 [dependencies]
 smallvec = "1.10.0"
-slab = { version = "0.4.8", optional = true }
-lock_api = { version = "0.4.10", optional = true }
-parking_lot = { version = "0.12.1", optional = true }
-arrayvec = { version = "0.7.3", optional = true }
-bumpalo = { version = "3.13.0", optional = true }
-thunderdome = { version = "0.6.0", optional = true }
+rustc-arena-modified = { path = "../rustc-arena-modified", version = "0.1.0", features = ["slab"] }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }
