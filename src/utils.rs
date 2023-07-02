@@ -1,4 +1,7 @@
 use std::mem::MaybeUninit;
+pub use ptr_eq::*;
+
+mod ptr_eq;
 
 /// [MaybeUninit::uninit_array] but stable.
 #[inline]

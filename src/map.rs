@@ -6,10 +6,12 @@ use std::mem::{forget, MaybeUninit};
 use std::ops::RangeBounds;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::ptr::drop_in_place;
+use std::thread::panicking;
 
 use crate::BTreeStore;
 use crate::cursor::Cursor;
 use crate::node::{address_after, address_before, M, Node, NodePtr, normalize_address};
+use crate::utils::PtrEq;
 
 /// A b-tree map.
 ///
@@ -463,8 +465,8 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
         };
 
         // Check for overlap (only need to check if address_after(start) == end)
-        if (start_node == end_node && start_index == end_index + 1) ||
-            (start_index == 0 && unsafe { start_node.as_ref().prev() } == Some(end_node)) {
+        if (start_node.ptr_eq(&end_node) && start_index == end_index + 1) ||
+            (start_index == 0 && unsafe { start_node.as_ref().prev() }.ptr_eq(&Some(end_node))) {
             return None
         }
 
@@ -492,33 +494,44 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             node.as_mut().insert_val(idx, key, val);
         } else {
             // Rebalance (overflow)
+
+            // First split
+            // `key` gets replaced with the "split" (median) key, and `node` gets replaced with the
+            // left node
             let mut right = self.store.alloc(node.as_mut().split_leaf(idx, &mut key, val));
             node.as_mut().set_next(Some(right));
             right.as_mut().set_prev(Some(node));
 
             loop {
                 let Some((mut parent, idx)) = node.as_ref().parent() else {
+                    // At root: create a new root with the split key, left, and right nodes
                     self.height += 1;
                     let mut left = node;
-                    let mut root = Node::internal();
-                    root.insert_edge(0, key, left);
-                    root.set_last_edge(right);
-                    let root = self.store.alloc(root);
+                    let mut root = self.store.alloc(Node::internal());
                     left.as_mut().set_parent(root, 0);
                     right.as_mut().set_parent(root, 1);
+                    root.as_mut().insert_edge(0, false, key, left);
+                    root.as_mut().set_last_edge(right);
                     self.root = Some(root);
                     break
                 };
 
+                // Insert split key and right into parent. left is already in parent at idx, so
+                // insert key at idx and right at idx + 1. We must handle the case where the parent
+                // overflows too...
+                right.as_mut().set_parent(parent, idx + 1);
                 if (parent.as_ref().len as usize) < M {
-                    right.as_mut().set_parent(parent, idx + 1);
-                    parent.as_mut().insert_edge(idx + 1, key, right);
+                    // The parent won't overflow, actually insert into parent
+                    parent.as_mut().insert_edge(idx, true, key, right);
                     break
                 }
+                // The parent will overflow too, so we split the parent when inserting idx/key/right
+                // split_internal will replace key with the split key and node with the left node,
+                // and we re-assign right to the right node (we don't just pass as a &mut like we do
+                // with key because it must be allocated). Then insert the new internal parent-right
+                // node in its parent, and so on, until we either find a suitable parent or reach
+                // the root.
                 node = parent;
-
-                let right_idx = node.as_ref().len / 2 + 1;
-                right.as_mut().set_parent(node, right_idx);
                 right = self.store.alloc(node.as_mut().split_internal(idx, &mut key, right));
             }
         }
@@ -564,7 +577,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         let (key, mut edge) = prev.as_mut().remove_last_edge();
                         let key = parent.as_mut().replace_key(idx - 1, key);
                         edge.as_mut().set_parent(node, 0);
-                        node.as_mut().insert_edge(0, key, edge);
+                        node.as_mut().insert_edge(0, false, key, edge);
                     }
                     break
                 }
@@ -581,8 +594,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     } else {
                         let (key, mut edge) = next.as_mut().remove_edge(0);
                         let key = parent.as_mut().replace_key(idx, key);
-                        node.as_mut().insert_last_edge(key, edge);
-                        edge.as_mut().set_parent(node, node.as_ref().len);
+                        let len = node.as_ref().len;
+                        edge.as_mut().set_parent(node, len + 1);
+                        node.as_mut().insert_edge(len, true, key, edge);
                     }
                     break
                 }
@@ -649,6 +663,11 @@ impl<K, V> NodeBounds<K, V> {
 impl<'store, K, V> Drop for BTreeMap<'store, K, V> {
     #[inline]
     fn drop(&mut self) {
+        if panicking() {
+            // TODO: Drop when panicking without causing UB (need to reorder some operations)
+            return
+        }
+
         if let Some(root) = self.root.take() {
             unsafe { drop_node_ptr(root, self.height, &mut |n| self.store.dealloc(n)) }
         }
@@ -1104,7 +1123,7 @@ impl<'a, K, V> Range<'a, K, V> {
         self.cursor.advance();
         if !self.cursor.is_attached() {
             self.back_cursor.detach();
-        } else if self.cursor.address() == Some(unsafe { self.bounds.assume_init_ref() }.end()) {
+        } else if self.cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end())) {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1116,7 +1135,7 @@ impl<'a, K, V> Range<'a, K, V> {
         self.back_cursor.advance_back();
         if !self.back_cursor.is_attached() {
             self.cursor.detach();
-        } else if self.back_cursor.address() == Some(unsafe { self.bounds.assume_init_ref() }.start()) {
+        } else if self.back_cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start())) {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1215,7 +1234,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         self.cursor.advance();
         if !self.cursor.is_attached() {
             self.back_cursor.detach();
-        } else if self.cursor.address() == Some(unsafe { self.bounds.assume_init_ref() }.end()) {
+        } else if self.cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end())) {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1227,7 +1246,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         self.back_cursor.advance_back();
         if !self.back_cursor.is_attached() {
             self.cursor.detach();
-        } else if self.back_cursor.address() == Some(unsafe { self.bounds.assume_init_ref() }.start()) {
+        } else if self.back_cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start())) {
             self.cursor.detach();
             self.back_cursor.detach()
         }

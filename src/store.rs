@@ -1,5 +1,3 @@
-use std::ptr::NonNull;
-use rustc_arena_modified::slab_arena::UnsafeRef;
 use rustc_arena_modified::SlabArena;
 use crate::node::{NodePtr, Node};
 
@@ -18,18 +16,18 @@ impl<K, V> BTreeStore<K, V> {
 
     #[inline]
     pub(crate) fn alloc(&self, node: Node<K, V>) -> NodePtr<K, V> {
-        NonNull::from(self.nodes.alloc(node).leak())
+        self.nodes.alloc(node).into_unsafe()
     }
 
     #[inline]
     pub(crate) fn dealloc(&self, node: NodePtr<K, V>) {
-        unsafe { UnsafeRef::from_ptr(node).discard(&self.nodes) }
+        unsafe { node.discard(&self.nodes) }
     }
 
     #[allow(unused)]
     #[inline]
     pub(crate) fn dealloc_and_return(&self, node: NodePtr<K, V>) -> Node<K, V> {
-        unsafe { UnsafeRef::from_ptr(node).take(&self.nodes) }
+        unsafe { node.take(&self.nodes) }
     }
 }
 
