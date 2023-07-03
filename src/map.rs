@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::mem::{forget, MaybeUninit};
 use std::ops::RangeBounds;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-use std::ptr::drop_in_place;
+use std::ptr::{drop_in_place, NonNull};
 use std::thread::panicking;
 
 use crate::BTreeStore;
@@ -273,10 +273,75 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// Ideally, this should always be a no-op.
     #[inline]
     pub fn validate(&self) where K: Ord {
-        // TODO
-        // if let Some(root) = self.root {
-        //     root.validate();
-        // }
+        unsafe fn validate_node<K: Ord, V>(
+            node: NodePtr<K, V>,
+            is_root: bool,
+            height: usize,
+            (mut prev_key, mut prev_leaf): (Option<NonNull<K>>, Option<NodePtr<K, V>>)
+        ) -> (usize, (NonNull<K>, NodePtr<K, V>)) {
+            let is_leaf = height == 0;
+            let node_ptr = node;
+            let node = node.as_ref();
+            let min_len = match is_root {
+                true => 1,
+                false => M / 2,
+            } as u16;
+            let max_len = M as u16;
+            assert!(node.len >= min_len, "node has too few entries");
+            assert!(node.len <= max_len, "node has too many entries");
+            if is_leaf {
+                assert!(node.prev().ptr_eq(&prev_leaf), "prev leaf is incorrect");
+                for i in 0..node.len {
+                    let key = node.key(i);
+
+                    if let Some(prev_key) = prev_key {
+                        let prev_key = prev_key.as_ref();
+                        assert!(match i {
+                            0 => key >= prev_key,
+                            _ => key > prev_key
+                        }, "keys are out of order");
+                    }
+
+                    prev_key = Some(NonNull::from(key));
+                }
+                (node.len as usize, (prev_key.unwrap(), node_ptr))
+            } else {
+                let mut len = 0;
+
+                for i in 0..node.len + 1 {
+                    if let Some(ki) = i.checked_sub(1) {
+                        let key = node.key(ki);
+
+                        if let Some(prev_key) = prev_key {
+                            let prev_key = prev_key.as_ref();
+                            assert!(key > prev_key, "keys are out of order");
+                        }
+
+                        prev_key = Some(NonNull::from(key));
+                    }
+
+                    let child = node.edge(i);
+
+                    if let Some(prev_leaf) = prev_leaf {
+                        let prev_leaf = prev_leaf.as_ref();
+                        assert!(prev_leaf.next().ptr_eq(&Some(child)), "next leaf is incorrect")
+                    }
+
+                    let (child_len, (last_key, last_leaf)) = validate_node(child, false, height - 1, (prev_key, prev_leaf));
+                    len += child_len;
+                    prev_key = Some(NonNull::from(last_key));
+                    prev_leaf = Some(last_leaf);
+                }
+                (len, (prev_key.unwrap(), prev_leaf.unwrap()))
+            }
+        }
+        if let Some(root) = self.root {
+            let (len, (_last_key, last_leaf)) = unsafe {
+                validate_node(root, true, self.height, (None, None))
+            };
+            assert_eq!(len, self.length, "tree length isn't correct");
+            assert!(unsafe { last_leaf.as_ref().next() }.ptr_eq(&None), "next leaf of last leaf is incorrect");
+        }
     }
     // endregion
 
