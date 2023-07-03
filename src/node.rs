@@ -388,20 +388,24 @@ impl<K, V> Node<K, V> {
         (key, val)
     }
 
-    /// Doesn't rebalance, removes edge before key.
+    /// Doesn't rebalance.
     #[inline]
-    pub unsafe fn remove_edge(&mut self, idx: u16) -> (K, NodePtr<K, V>) {
+    pub unsafe fn remove_edge(&mut self, idx: u16, after_key: bool) -> (K, NodePtr<K, V>) {
         debug_assert!(idx < self.len);
         debug_assert!(self.len > 0);
+        let edge_idx = match after_key {
+            false => idx,
+            true => idx + 1
+        };
         debug_assert_eq!(
-            self.edge(idx).as_ref().parent_idx(),
-            Some(idx),
+            self.edge(edge_idx).as_ref().parent_idx(),
+            Some(edge_idx),
             "Sanity check failed: InternalNode::remove_edge edge's parent_idx is wrong"
         );
 
         // Read removed key and edge (safe because we either overwrite or decrease len past memory)
         let key = self.keys[idx as usize].assume_init_read();
-        let edge = self.d.internal().edges[idx as usize].assume_init();
+        let edge = self.d.internal().edges[edge_idx as usize].assume_init();
 
         // Shift later keys and edges
         if idx + 1 < self.len {
@@ -412,11 +416,11 @@ impl<K, V> Node<K, V> {
             );
             unsafe_copy_slice_overlapping(
                 &mut self.d.internal_mut().edges,
-                idx as usize..self.len as usize - 1,
-                idx as usize + 1..self.len as usize
+                edge_idx as usize..self.len as usize,
+                edge_idx as usize + 1..self.len as usize + 1
             );
             // Update later edge parent idxs
-            for edge in self.d.internal_mut().edges[idx as usize..self.len as usize - 1].iter_mut().map(|e| e.assume_init_mut()) {
+            for edge in self.d.internal_mut().edges[edge_idx as usize..self.len as usize].iter_mut().map(|e| e.assume_init_mut()) {
                 *edge.as_mut().parent_idx.assume_init_mut() -= 1;
             }
         }
@@ -430,8 +434,8 @@ impl<K, V> Node<K, V> {
     pub unsafe fn remove_last_edge(&mut self) -> (K, NodePtr<K, V>) {
         debug_assert!(self.len > 0);
         debug_assert_eq!(
-            self.edge(self.len - 1).as_ref().parent_idx(),
-            Some(self.len - 1),
+            self.edge(self.len).as_ref().parent_idx(),
+            Some(self.len),
             "Sanity check failed: InternalNode::remove_last_edge edge's parent_idx is wrong"
         );
 
@@ -548,8 +552,8 @@ impl<K, V> Node<K, V> {
         right
     }
 
-    /// Absorbs all of `prev`'s keys and values and also its `prev` and `parent_idx`. Afterwards
-    /// `prev` should be removed from the parent and discarded.
+    /// Absorbs all of `prev`'s keys and values and also its `prev`. Afterwards `prev` should be
+    /// removed from the parent and discarded, and `self.prev.next` should be set to `self`.
     #[inline]
     pub unsafe fn merge_prev_leaf(&mut self, prev: &mut Node<K, V>) {
         debug_assert!(self.prev().ptr_eq(&Some(NodePtr::from_ref(prev))));
@@ -570,11 +574,10 @@ impl<K, V> Node<K, V> {
         unsafe_copy_slice_nonoverlapping(&mut self.d.leaf_mut().vals[..prev.len as usize], &prev.d.leaf().vals[..prev.len as usize]);
         self.len = new_len;
         self.set_prev(prev.prev());
-        *self.parent_idx.assume_init_mut() -= 1;
     }
 
     /// Absorbs all of `next`'s keys and values and also its `next`. Afterwards `next` should be
-    /// discarded and removed from the parent.
+    /// discarded and removed from the parent, and `self.next.prev` should be set to `self`.
     #[inline]
     pub unsafe fn merge_next_leaf(&mut self, next: &mut Node<K, V>) {
         debug_assert!(self.next().ptr_eq(&Some(NodePtr::from_ref(next))));
@@ -589,14 +592,14 @@ impl<K, V> Node<K, V> {
         debug_assert!((self.len + next.len) as usize <= M, "nodes are too big to merge");
 
         let new_len = self.len + next.len;
-        unsafe_copy_slice_overlapping(&mut self.keys, self.len as usize..new_len as usize, ..next.len as usize);
-        unsafe_copy_slice_overlapping(&mut self.d.leaf_mut().vals, self.len as usize..new_len as usize, ..next.len as usize);
+        unsafe_copy_slice_nonoverlapping(&mut self.keys[self.len as usize..new_len as usize], &next.keys[..next.len as usize]);
+        unsafe_copy_slice_nonoverlapping(&mut self.d.leaf_mut().vals[self.len as usize..new_len as usize], &next.d.leaf().vals[..next.len as usize]);
         self.len = new_len;
         self.set_next(next.next());
     }
 
-    /// Absorbs all of `prev`'s key and edges and also its `prev` and `parent_idx`. Afterwards
-    /// `prev` should be removed from the parent and discarded.
+    /// Absorbs all of `prev`'s key and edges and also its `prev`. Afterwards `prev` should be
+    /// removed from the parent and discarded.
     #[inline]
     pub unsafe fn merge_prev_internal(&mut self, middle_key: K, prev: &mut Node<K, V>) {
         debug_assert!(self.prev().ptr_eq(&Some(NodePtr::from_ref(prev))));
@@ -618,7 +621,6 @@ impl<K, V> Node<K, V> {
         self.keys[prev.len as usize].write(middle_key);
         self.len = new_len;
         self.set_prev(prev.prev());
-        *self.parent_idx.assume_init_mut() -= 1;
     }
 
     /// Absorbs all of `next`'s key and edges and also its `next` and `parent_idx`. Afterwards
@@ -637,8 +639,8 @@ impl<K, V> Node<K, V> {
         debug_assert!(((self.len + next.len) as usize) < M, "nodes are too big to merge");
         let new_len = self.len + next.len + 1;
         self.keys[self.len as usize].write(middle_key);
-        unsafe_copy_slice_overlapping(&mut self.keys, self.len as usize + 1..new_len as usize, ..next.len as usize);
-        unsafe_copy_slice_overlapping(&mut self.d.internal_mut().edges, self.len as usize + 1..new_len as usize + 1, ..next.len as usize + 1);
+        unsafe_copy_slice_nonoverlapping(&mut self.keys[self.len as usize + 1..new_len as usize], &next.keys[..next.len as usize]);
+        unsafe_copy_slice_nonoverlapping(&mut self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1], &next.d.internal().edges[..next.len as usize + 1]);
         self.len = new_len;
         self.set_next(next.next());
     }

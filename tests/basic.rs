@@ -36,6 +36,7 @@ pub fn remove() {
 	for (key, _) in &items {
 		btree.remove(&key);
 		btree.validate();
+		println!("{:?}", btree);
 	}
 
 	assert!(btree.is_empty())
@@ -65,6 +66,7 @@ pub fn update() {
 		});
 
 		btree.validate();
+		println!("{:?}", btree);
 	}
 
 	for (key, value) in &ITEMS {

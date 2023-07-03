@@ -750,7 +750,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         let (key, val) = next.as_mut().remove_val(0);
                         node.as_mut().insert_val(node.as_ref().len, key, val);
                     } else {
-                        let (key, mut edge) = next.as_mut().remove_edge(0);
+                        let (key, mut edge) = next.as_mut().remove_edge(0, false);
                         let key = parent.as_mut().replace_key(idx, key);
                         let len = node.as_ref().len;
                         edge.as_mut().set_parent(node, len + 1);
@@ -766,6 +766,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 let mut prev = parent.as_mut().edge(idx - 1);
                 if is_leaf {
                     node.as_mut().merge_prev_leaf(prev.as_mut());
+                    if let Some(mut new_prev) = node.as_ref().prev() {
+                        new_prev.as_mut().set_next(Some(node));
+                    }
                 } else {
                     let key = parent.as_ref().key(idx - 1).clone();
                     node.as_mut().merge_prev_internal(key, prev.as_mut());
@@ -773,12 +776,16 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
                 // Dealloc and remove absorbed (empty) node and fix indices of the nodes
                 // after
+                let (_key, edge) = parent.as_mut().remove_edge(idx - 1, false);
+                debug_assert!(edge.ptr_eq(&prev));
                 self.store.dealloc(prev);
-                parent.as_mut().remove_edge(idx - 1);
             } else {
                 let mut next = parent.as_mut().edge(idx + 1);
                 if is_leaf {
                     node.as_mut().merge_next_leaf(next.as_mut());
+                    if let Some(mut new_next) = node.as_ref().next() {
+                        new_next.as_mut().set_prev(Some(node));
+                    }
                 } else {
                     let key = parent.as_ref().key(idx).clone();
                     node.as_mut().merge_next_internal(key, next.as_mut());
@@ -786,14 +793,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
                 // Dealloc and remove absorbed (empty) node and fix indices of the nodes
                 // after
+                let (_key, edge) = parent.as_mut().remove_edge(idx, true);
+                debug_assert!(edge.ptr_eq(&next));
                 self.store.dealloc(next);
-                parent.as_mut().remove_edge(idx + 1);
-            }
-            // Whether we merge prev or next, we need to decrement the parent_idx of later
-            // edges (this one is already decremented if necessary)
-            for idx in idx + 1..parent.as_ref().len + 1 {
-                debug_assert_eq!(parent.as_ref().edge(idx).as_ref().parent_idx.assume_init(), idx + 1);
-                *parent.as_mut().edge(idx).as_mut().parent_idx.assume_init_mut() -= 1;
             }
 
             // Since we merged, we may now have to redistribute or merge the parent since it
