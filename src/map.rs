@@ -569,7 +569,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         break Find::At { node, idx };
                     }
                     height -= 1;
-                    node = unsafe { node.as_ref().edge(idx) }
+                    node = unsafe { node.as_ref().edge(idx + 1) }
                 },
                 Err(idx) => {
                     let idx = idx as u16;
@@ -664,9 +664,12 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     let mut left = node;
                     let mut root = self.store.alloc(Node::internal());
                     left.as_mut().set_parent(root, 0);
-                    right.as_mut().set_parent(root, 1);
-                    root.as_mut().insert_edge(0, false, key, left);
+                    // Has to be before insert_edge, otherwise we try to modify a deallocated edge,
+                    // because the tree has 0 edges but insert_edge always expects at least 1.
+                    // Furthermore, we need correct parent_idx, which is why we set both to 0.
+                    right.as_mut().set_parent(root, 0);
                     root.as_mut().set_last_edge(right);
+                    root.as_mut().insert_edge(0, false, key, left);
                     self.root = Some(root);
                     break
                 };
@@ -711,10 +714,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     if node.as_ref().len == 0 {
                         self.root = None;
                     }
-                } else if node.as_ref().len < 2 {
-                    // If the root is internal, it can have min 2 children. Otherwise, the
-                    // remaining child becomes the new root.
-                    debug_assert_eq!(node.as_ref().len, 1);
+                } else if node.as_ref().len < 1 {
+                    // If the root is internal, it can have min 1 child (= 2 edges). Otherwise, the
+                    // remaining edge becomes the new root.
                     self.height -= 1;
                     self.root = Some(node.as_ref().edge(0));
                     self.store.dealloc(node);
@@ -771,6 +773,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     }
                 } else {
                     let key = parent.as_ref().key(idx - 1).clone();
+                    for child in prev.as_mut().edges_mut() {
+                        child.as_mut().parent = Some(node);
+                    }
                     node.as_mut().merge_prev_internal(key, prev.as_mut());
                 }
 
@@ -788,6 +793,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     }
                 } else {
                     let key = parent.as_ref().key(idx).clone();
+                    for child in next.as_mut().edges_mut() {
+                        child.as_mut().parent = Some(node);
+                    }
                     node.as_mut().merge_next_internal(key, next.as_mut());
                 }
 

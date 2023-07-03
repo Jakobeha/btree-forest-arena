@@ -316,17 +316,18 @@ impl<K, V> Node<K, V> {
         );
 
         // Shift later keys and edges
-        if self.len > idx {
+        if idx < self.len {
             unsafe_copy_slice_overlapping(
                 &mut self.keys,
                 idx as usize + 1..self.len as usize + 1,
                 idx as usize..self.len as usize
             );
-            let after_edge_idx = match after_key {
-                false => idx,
-                true => idx + 1
-            };
-
+        }
+        let after_edge_idx = match after_key {
+            false => idx,
+            true => idx + 1
+        };
+        if after_edge_idx < self.len + 1 {
             unsafe_copy_slice_overlapping(
                 &mut self.d.internal_mut().edges,
                 after_edge_idx as usize + 1..self.len as usize + 2,
@@ -414,6 +415,8 @@ impl<K, V> Node<K, V> {
                 idx as usize..self.len as usize - 1,
                 idx as usize + 1..self.len as usize
             );
+        }
+        if edge_idx < self.len {
             unsafe_copy_slice_overlapping(
                 &mut self.d.internal_mut().edges,
                 edge_idx as usize..self.len as usize,
@@ -598,11 +601,10 @@ impl<K, V> Node<K, V> {
         self.set_next(next.next());
     }
 
-    /// Absorbs all of `prev`'s key and edges and also its `prev`. Afterwards `prev` should be
-    /// removed from the parent and discarded.
+    /// Absorbs all of `prev`'s key and edges. Beforehand `prev`'s edges' parent nodes should be
+    /// updated to `self`, and afterwards `prev` should be removed from the parent and discarded.
     #[inline]
     pub unsafe fn merge_prev_internal(&mut self, middle_key: K, prev: &mut Node<K, V>) {
-        debug_assert!(self.prev().ptr_eq(&Some(NodePtr::from_ref(prev))));
         debug_assert!(
             prev.parent.ptr_eq(&self.parent),
             "sanity check failed: prev.parent != self.parent (the failure happened before this function call, it was only detected now)"
@@ -616,18 +618,20 @@ impl<K, V> Node<K, V> {
         let new_len = prev.len + self.len + 1;
         unsafe_copy_slice_overlapping(&mut self.keys, prev.len as usize + 1..new_len as usize, ..self.len as usize);
         unsafe_copy_slice_overlapping(&mut self.d.internal_mut().edges, prev.len as usize + 1..new_len as usize + 1, ..self.len as usize + 1);
+        // Update edge parent indices
+        for edge in self.d.internal_mut().edges[prev.len as usize + 1..new_len as usize + 1].iter_mut().map(|e| e.assume_init_mut()) {
+            *edge.as_mut().parent_idx.assume_init_mut() += prev.len + 1;
+        }
         unsafe_copy_slice_nonoverlapping(&mut self.keys[..prev.len as usize], &prev.keys[..prev.len as usize]);
         unsafe_copy_slice_nonoverlapping(&mut self.d.internal_mut().edges[..prev.len as usize + 1], &prev.d.internal().edges[..prev.len as usize + 1]);
         self.keys[prev.len as usize].write(middle_key);
         self.len = new_len;
-        self.set_prev(prev.prev());
     }
 
-    /// Absorbs all of `next`'s key and edges and also its `next` and `parent_idx`. Afterwards
-    /// `next` should be removed from the parent and discarded.
+    /// Absorbs all of `next`'s key and edges. Beforehand `next`'s edges' parent nodes should be
+    /// updated to `self`, and afterwards `next` should be removed from the parent and discarded.
     #[inline]
     pub unsafe fn merge_next_internal(&mut self, middle_key: K, next: &mut Node<K, V>) {
-        debug_assert!(self.next().ptr_eq(&Some(NodePtr::from_ref(next))));
         debug_assert!(
             self.parent.ptr_eq(&next.parent),
             "sanity check failed: self.parent != next.parent (the failure happened before this function call, it was only detected now)"
@@ -641,8 +645,11 @@ impl<K, V> Node<K, V> {
         self.keys[self.len as usize].write(middle_key);
         unsafe_copy_slice_nonoverlapping(&mut self.keys[self.len as usize + 1..new_len as usize], &next.keys[..next.len as usize]);
         unsafe_copy_slice_nonoverlapping(&mut self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1], &next.d.internal().edges[..next.len as usize + 1]);
+        // Update edge parent indices
+        for edge in self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1].iter_mut().map(|e| e.assume_init_mut()) {
+            *edge.as_mut().parent_idx.assume_init_mut() += self.len + 1;
+        }
         self.len = new_len;
-        self.set_next(next.next());
     }
 }
 
