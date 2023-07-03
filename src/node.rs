@@ -464,8 +464,8 @@ impl<K, V> Node<K, V> {
     /// This becomes the left node, returns the right node and replaces the key with the median key
     /// ("split key").
     ///
-    /// `self.d.leaf().prev` and `right.d.leaf().next` are set but you need to set
-    /// `self.d.leaf().next` and `right.d.leaf().prev`.
+    /// `self.d.leaf().prev`, `right.d.leaf().next`, and `self.d.leaf().prev.next` are set, but you need to set
+    /// `self.d.leaf().next`, `right.d.leaf().prev`, and `right.d.leaf().next.prev`.
     #[inline]
     pub unsafe fn split_leaf(&mut self, mut idx: u16, key: &mut K, mut val: V) -> Node<K, V> where K: Clone {
         debug_assert!(idx <= self.len);
@@ -502,7 +502,8 @@ impl<K, V> Node<K, V> {
     /// This becomes the left node, returns the right node and replaces the key with the median key
     /// ("split key"). The edge is inserted after the key.
     ///
-    /// `idx` is actually redundant here, you must call `set_parent` on `edge` before.
+    /// `idx` is actually redundant here, you must call `set_parent` on `edge` before. You must also
+    /// set the parent node on all nodes in `right` (the returned node).
     #[inline]
     pub unsafe fn split_internal(&mut self, mut idx: u16, key: &mut K, mut edge: NodePtr<K, V>) -> Node<K, V> {
         debug_assert!(idx <= self.len);
@@ -526,11 +527,11 @@ impl<K, V> Node<K, V> {
         while idx > median {
             idx -= 1;
             swap(self.key_mut(idx), key);
-            swap(self.edge_mut(idx), &mut edge);
+            swap(self.edge_mut(idx + 1), &mut edge);
 
             // old edge's parent idx will be changed after split
             // new edge's parent_idx is already idx after decrement
-            debug_assert_eq!(edge.as_ref().parent_idx(), Some(idx));
+            debug_assert_eq!(edge.as_ref().parent_idx(), Some(idx + 1));
         }
 
         // Now we just split and insert the middle into one of the nodes
@@ -540,10 +541,6 @@ impl<K, V> Node<K, V> {
         right.d.internal_mut().edges[0].write(edge);
         // Update parent_idxs in right (including the edge we just inserted)
         for (idx, mut edge) in right.d.internal_mut().edges[..median as usize + 1].iter_mut().enumerate().map(|(idx, e)| (idx as u16, e.assume_init())) {
-            // debug_assert_eq!(edge.as_ref().parent_idx(), Some(match idx {
-            //     0 => median + idx + 1,
-            //     _ => median + idx,
-            // }));
             *edge.as_mut().parent_idx.assume_init_mut() = idx;
         }
         right.len = self.len - median;

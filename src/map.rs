@@ -1,5 +1,7 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::Bound;
+use std::fmt::{Debug, Formatter};
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem::{forget, MaybeUninit};
@@ -272,34 +274,48 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     ///
     /// Ideally, this should always be a no-op.
     #[inline]
-    pub fn validate(&self) where K: Ord {
-        unsafe fn validate_node<K: Ord, V>(
+    pub fn validate(&self) where K: Debug + Ord, V: Debug {
+        unsafe fn validate_node<K: Debug + Ord, V: Debug>(
+            errors: &mut Vec<String>,
             node: NodePtr<K, V>,
-            is_root: bool,
+            parent: Option<(NodePtr<K, V>, u16)>,
             height: usize,
             (mut prev_key, mut prev_leaf): (Option<NonNull<K>>, Option<NodePtr<K, V>>)
         ) -> (usize, (NonNull<K>, NodePtr<K, V>)) {
+            let errors = RefCell::new(errors);
+            let assert2 = |node: NodePtr<K, V>, cond: bool, msg: &str| if !cond {
+                (*errors.borrow_mut()).push(format!("{:X?} {}", node.as_ptr(), msg))
+            };
+            let assert = |cond: bool, msg: &str| if !cond {
+                assert2(node, cond, msg)
+            };
+
             let is_leaf = height == 0;
             let node_ptr = node;
             let node = node.as_ref();
-            let min_len = match is_root {
-                true => 1,
-                false => M / 2,
+
+            assert(node.parent().map(|p| p.0).ptr_eq(&parent.map(|p| p.0)), "parent pointer is incorrect");
+            assert(node.parent().map(|p| p.1).ptr_eq(&parent.map(|p| p.1)), "parent index is incorrect");
+
+            let min_len = match parent {
+                None => 1,
+                Some(_) => M / 2,
             } as u16;
             let max_len = M as u16;
-            assert!(node.len >= min_len, "node has too few entries");
-            assert!(node.len <= max_len, "node has too many entries");
+            assert(node.len >= min_len, "has too few entries");
+            assert(node.len <= max_len, "has too many entries");
+
             if is_leaf {
-                assert!(node.prev().ptr_eq(&prev_leaf), "prev leaf is incorrect");
+                assert(node.prev().ptr_eq(&prev_leaf), "prev leaf is incorrect");
                 for i in 0..node.len {
                     let key = node.key(i);
 
                     if let Some(prev_key) = prev_key {
                         let prev_key = prev_key.as_ref();
-                        assert!(match i {
+                        assert(match i {
                             0 => key >= prev_key,
                             _ => key > prev_key
-                        }, "keys are out of order");
+                        }, &format!("key {} is out of order", i));
                     }
 
                     prev_key = Some(NonNull::from(key));
@@ -314,7 +330,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
                         if let Some(prev_key) = prev_key {
                             let prev_key = prev_key.as_ref();
-                            assert!(key > prev_key, "keys are out of order");
+                            assert(key > prev_key, &format!("key {} is out of order", i));
                         }
 
                         prev_key = Some(NonNull::from(key));
@@ -322,25 +338,96 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
                     let child = node.edge(i);
 
-                    if let Some(prev_leaf) = prev_leaf {
-                        let prev_leaf = prev_leaf.as_ref();
-                        assert!(prev_leaf.next().ptr_eq(&Some(child)), "next leaf is incorrect")
+                    if height == 1 {
+                        if let Some(prev_leaf) = prev_leaf {
+                            let prev_leaf_ptr = prev_leaf;
+                            let prev_leaf = prev_leaf.as_ref();
+                            assert2(
+                                prev_leaf_ptr,
+                                prev_leaf.next().ptr_eq(&Some(child)),
+                                &format!("next leaf is incorrect (expected {:X?} got {:X?})", child.as_ptr(), as_nullable_ptr(prev_leaf.next()))
+                            )
+                        }
                     }
 
-                    let (child_len, (last_key, last_leaf)) = validate_node(child, false, height - 1, (prev_key, prev_leaf));
+                    let (child_len, (last_key, last_leaf)) = validate_node(
+                        *errors.borrow_mut(),
+                        child,
+                        Some((node_ptr, i)),
+                        height - 1,
+                        (prev_key, prev_leaf)
+                    );
                     len += child_len;
-                    prev_key = Some(NonNull::from(last_key));
+                    prev_key = Some(last_key);
                     prev_leaf = Some(last_leaf);
                 }
                 (len, (prev_key.unwrap(), prev_leaf.unwrap()))
             }
         }
+        let mut errors = Vec::new();
         if let Some(root) = self.root {
             let (len, (_last_key, last_leaf)) = unsafe {
-                validate_node(root, true, self.height, (None, None))
+                validate_node(&mut errors, root, None, self.height, (None, None))
             };
-            assert_eq!(len, self.length, "tree length isn't correct");
-            assert!(unsafe { last_leaf.as_ref().next() }.ptr_eq(&None), "next leaf of last leaf is incorrect");
+            if len != self.length {
+                errors.push(String::from("tree length isn't correct"))
+            };
+            if !unsafe { last_leaf.as_ref().next() }.ptr_eq(&None) {
+                errors.push(format!("{:X?} next leaf is incorrect", unsafe { last_leaf.as_ptr() }))
+            }
+        }
+        if !errors.is_empty() {
+            panic!("invalid b-tree:\n{:?}\n- {}", self, errors.join("\n- "));
+        }
+    }
+
+    /// Prints the b-tree in ascii
+    #[inline]
+    pub fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result where K: Debug, V: Debug {
+        unsafe fn print_node<K: Debug, V: Debug>(
+            f: &mut Formatter<'_>,
+            node: NodePtr<K, V>,
+            max_height: usize,
+            height: usize,
+        ) -> std::fmt::Result {
+            let is_leaf = height == 0;
+            let node_ptr = node;
+            let node = node.as_ref();
+            let indent = "│ ".repeat(max_height - height);
+            write!(f, "{}• {:X?}, parent = ", indent, node_ptr.as_ptr())?;
+            match node.parent() {
+                Some((parent, parent_idx)) => write!(f, "({:X?}, {})", parent.as_ptr(), parent_idx)?,
+                None => write!(f, "None")?,
+            }
+            if is_leaf {
+                writeln!(f, ", prev = {:X?}, next = {:X?}", as_nullable_ptr(node.prev()), as_nullable_ptr(node.next()))?;
+                for i in 0..node.len {
+                    let bullet = if i == node.len - 1 {
+                        "└"
+                    } else {
+                        "├"
+                    };
+                    writeln!(f, "{}{} {:?} = {:?}", indent, bullet, node.key(i), node.val(i))?;
+                }
+            } else {
+                writeln!(f)?;
+                for i in 0..node.len + 1 {
+                    if let Some(ki) = i.checked_sub(1) {
+                        let key = node.key(ki);
+                        writeln!(f, "{}├ {:?}", indent, key)?;
+                    }
+
+                    let child = node.edge(i);
+                    print_node(f, child, max_height, height - 1)?;
+                }
+                writeln!(f, "{}└", indent)?;
+            }
+            Ok(())
+        }
+        if let Some(root) = self.root {
+            unsafe { print_node(f, root, self.height, self.height) }
+        } else {
+            writeln!(f, "empty")
         }
     }
     // endregion
@@ -566,6 +653,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             let mut right = self.store.alloc(node.as_mut().split_leaf(idx, &mut key, val));
             node.as_mut().set_next(Some(right));
             right.as_mut().set_prev(Some(node));
+            if let Some(mut right_next) = right.as_ref().next() {
+                right_next.as_mut().set_prev(Some(right));
+            }
 
             loop {
                 let Some((mut parent, idx)) = node.as_ref().parent() else {
@@ -598,6 +688,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 // the root.
                 node = parent;
                 right = self.store.alloc(node.as_mut().split_internal(idx, &mut key, right));
+                for right_child in right.as_mut().edges_mut() {
+                    right_child.as_mut().parent = Some(right);
+                }
             }
         }
         self.length += 1;
@@ -721,6 +814,12 @@ impl<K, V> NodeBounds<K, V> {
     #[inline]
     fn end(&self) -> (NodePtr<K, V>, u16) {
         (self.end_node, self.end_index)
+    }
+}
+
+impl<'store, K: Debug, V: Debug> Debug for BTreeMap<'store, K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.print(f)
     }
 }
 
@@ -1341,3 +1440,10 @@ impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
 impl<'a, K, V> FusedIterator for RangeMut<'a, K, V> {}
 // endregion
 // endregion
+
+unsafe fn as_nullable_ptr<K, V>(ptr: Option<NodePtr<K, V>>) -> *const Node<K, V> {
+    match ptr {
+        Some(ptr) => ptr.as_ptr().as_ptr(),
+        None => std::ptr::null()
+    }
+}

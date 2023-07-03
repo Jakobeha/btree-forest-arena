@@ -13,6 +13,7 @@ pub fn insert() {
 			println!("duplicate: {}", key);
 		}
 		btree.validate();
+		println!("{:?}", btree);
 	}
 
 	assert_eq!(btree.len(), 100);
