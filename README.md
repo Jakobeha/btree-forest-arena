@@ -49,7 +49,7 @@ fn main() {
 
 ## Safety
 
-This library makes heavy use of `unsafe` and is not fully tested with MIRI. There are tests for most operations and edge cases, but it's still in the early phases and shouldn't be used in production.
+This library makes heavy use of `unsafe` and isn't fully tested with MIRI. There are tests for most operations and edge cases, but it's still in the early phase. And since with `std::collections::BTreeMap` and `std::collections::BTreeSet` are available and better in most cases, it shouldn't be used in production.
 
 ## Benchmarks
 
