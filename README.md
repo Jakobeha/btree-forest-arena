@@ -1,9 +1,9 @@
 # btree-plus-store: B-trees backed by a slab/arena to reduce allocations and increase locality
 
-[![CI](https://github.com/Jakobeha/btree-store/workflows/CI/badge.svg)](https://github.com/Jakobeha/btree-store/actions)
-[![Crate informations](https://img.shields.io/crates/v/btree-store.svg?style=flat-square)](https://crates.io/crates/btree-store)
-[![License](https://img.shields.io/crates/l/btree-store.svg?style=flat-square)](https://github.com/Jakobeha/btree-store#license)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/btree-store)
+[![CI](https://github.com/Jakobeha/btree-plus-store/workflows/CI/badge.svg)](https://github.com/Jakobeha/btree-plus-store/actions)
+[![Crate informations](https://img.shields.io/crates/v/btree-plus-store.svg?style=flat-square)](https://crates.io/crates/btree-plus-store)
+[![License](https://img.shields.io/crates/l/btree-plus-store.svg?style=flat-square)](https://github.com/Jakobeha/btree-plus-store#license)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/btree-plus-store)
 
 Forked from [btree-slab](https://github.com/timothee-haudebourg/btree-slab).
 

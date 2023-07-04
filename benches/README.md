@@ -1,4 +1,4 @@
-# btree-store-benchmarks
+# btree-plus-store-benchmarks
 
 ## Why is this a separate workspace?
 

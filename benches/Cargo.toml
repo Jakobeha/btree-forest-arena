@@ -1,5 +1,5 @@
 [package]
-name = "btree-store-benchmarks"
+name = "btree-plus-store-benchmarks"
 version = "0.1.0"
 edition = "2021"
 publish = false
