@@ -675,7 +675,7 @@ impl<K, V> NodeData<K, V> {
 pub unsafe fn normalize_address<K, V>(node: NodePtr<K, V>, idx: u16) -> Option<(NodePtr<K, V>, u16)> {
     let node_ref = node.as_ref();
     if idx < node_ref.len {
-        Some((node, idx - 1))
+        Some((node, idx))
     } else {
         debug_assert_eq!(idx, node_ref.len);
         node_ref.next().map(|node| (node, 0))

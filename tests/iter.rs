@@ -1,4 +1,5 @@
 use std::{cell::Cell, rc::Rc};
+use std::fmt::{Debug, Formatter};
 use btree_forest_arena::{BTreeMap, BTreeStore};
 
 #[test]
@@ -40,6 +41,12 @@ pub fn into_iter() {
 		}
 	}
 
+	impl Debug for Element {
+		fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+			write!(f, "{}", self.value)
+		}
+	}
+
 	impl Drop for Element {
 		fn drop(&mut self) {
 			let c = self.counter.get();
@@ -53,6 +60,8 @@ pub fn into_iter() {
 	for i in 0..100 {
 		map.insert(i, Element::new(&counter, i));
 	}
+
+	println!("{:?}", map);
 
 	for (key, value) in map {
 		assert_eq!(key, value.inner());

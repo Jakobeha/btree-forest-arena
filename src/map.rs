@@ -588,8 +588,8 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
         let (start_node, start_index) = match bounds.start_bound() {
             Bound::Included(bound) => match self.find(bound) {
                 Find::NoRoot => return None,
-                Find::Before { node, idx } |
-                Find::At { node, idx } => (node, idx),
+                Find::Before { node, idx } => unsafe { normalize_address(node, idx) }?,
+                Find::At { node, idx } => (node, idx)
             }
             Bound::Excluded(bound) => match self.find(bound) {
                 Find::NoRoot => return None,
@@ -883,8 +883,8 @@ unsafe fn dealloc_up_firsts<K, V>(
         let (node, idx) = address;
 
         debug_assert!(
-            idx < node.as_ref().len,
-            "sanity check failed: address.idx >= address.node.len (invariant broke BEFORE this call)"
+            idx <= node.as_ref().len,
+            "sanity check failed: address.idx > address.node.len (invariant broke BEFORE this call)"
         );
         if idx != 0 {
             break
@@ -904,28 +904,34 @@ unsafe fn dealloc_up_firsts<K, V>(
 /// of its parent, if so deallocates its parent, and so on.
 ///
 /// Doesn't drop any of the nodes' contents
+#[inline]
 unsafe fn dealloc_up_lasts<K, V>(
-    mut address: (NodePtr<K, V>, u16),
+    (mut node, mut idx): (NodePtr<K, V>, u16),
     mut dealloc: impl FnMut(NodePtr<K, V>)
 ) {
-    loop {
-        let (node, idx) = address;
+    debug_assert!(
+        idx < node.as_ref().len,
+        "sanity check failed: address.idx >= address.node.len (invariant broke BEFORE this call)"
+    );
+    if idx != node.as_ref().len - 1 {
+        return
+    }
 
-        debug_assert!(
-            idx < node.as_ref().len,
-            "sanity check failed: address.idx >= address.node.len (invariant broke BEFORE this call)"
-        );
-        if idx != node.as_ref().len - 1 {
-            break
-        }
-
+    while let Some(parent) = {
         let parent = node.as_ref().parent();
         dealloc(node);
+        parent
+    } {
+        node = parent.0;
+        idx = parent.1;
 
-        let Some(parent) = parent else {
+        debug_assert!(
+            idx <= node.as_ref().len,
+            "sanity check failed: address.idx > address.node.len (invariant broke BEFORE this call)"
+        );
+        if idx != node.as_ref().len {
             break
-        };
-        address = parent;
+        }
     }
 }
 // endregion
@@ -1182,13 +1188,17 @@ pub struct IntoIter<'store, K, V> {
 impl<'store, K, V> IntoIter<'store, K, V> {
     #[inline]
     fn new(tree: BTreeMap<'store, K, V>) -> Self {
-        Self {
+        let result = Self {
             store: tree.store,
             cursor: unsafe { Cursor::new(tree.first_leaf(), 0) },
             back_cursor: unsafe { Cursor::new_at_end(tree.last_leaf()) },
             length: tree.length,
             _p: PhantomData,
-        }
+        };
+        // We drop the tree's nodes, so prevent it drop dropping when it drops itself.
+        // This should be equivalent to `tree.root = None`
+        forget(tree);
+        result
     }
 }
 

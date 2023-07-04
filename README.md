@@ -13,15 +13,15 @@ You have many b-trees, some of which are very tiny, and want to reduce allocatio
 
 ## What is it?
 
-`BTreeMap` and `BTreeSet` with an interface almost identical to standard library (with some additional features), but constructed via `new_in(&'a SlabArena)`.
+`BTreeMap` and `BTreeSet` with an interface almost identical to standard library (with some additional features), but constructed via `new_in(&'a BTreeStore)`.
 
-`SlabArena` is internally an arena which maintains a linked list in the allocated but discarded nodes like a slab. This means we can reuse nodes by dropped b-trees, although the memory won't get reclaimed until the arena is destroyed or cleared via mutable borrow. You can also use the `SlabArena` to store other data, as well as the underlying `TypedArena` within.
+`BTreeStore` is internally an arena which maintains a linked list in the allocated but discarded nodes like a slab. This means we can reuse nodes by dropped b-trees, although the memory won't get reclaimed until the arena is destroyed.
 
 ```rust
-use btree_forest_arena::{BTreeSet, SlabArena};
+use btree_forest_arena::{BTreeSet, BTreeStore};
 
 fn main() {
-  let store = SlabArena::new();
+  let store = BTreeStore::new();
   let mut foo_bars: BTreeSet<'_, &'static str> = BTreeSet::new_in(&store);
   let mut alphabeticals: BTreeSet<'_, &'static str> = BTreeSet::new_in(&store);
   

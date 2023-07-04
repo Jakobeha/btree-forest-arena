@@ -62,14 +62,17 @@ impl<'a, K, V> Cursor<'a, K, V> {
     /// Move to the previous entry
     #[inline]
     pub fn advance_back(&mut self) {
-        let Some(node) = self.node() else {
-            panic!("Cursor::advance_back called on empty cursor");
-        };
         if self.index > 0 {
             self.index -= 1;
         } else {
-            self.node = unsafe { node.prev() };
-            self.index = node.len - 1;
+            self.node = match self.node() {
+                None => panic!("Cursor::advance_back called on empty cursor"),
+                Some(node) => unsafe { node.prev() },
+            };
+            self.index = match self.node() {
+                None => 0,
+                Some(node) => node.len - 1,
+            };
         }
     }
 
