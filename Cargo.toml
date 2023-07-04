@@ -16,8 +16,13 @@ autobenches = false
 
 # Benchmarks are additional tests, we run them with the criterion bencher replaced by stubs
 [[test]]
-name = "benchmarks"
-path = "benches/benches.rs"
+name = "map_benchmarks"
+path = "benches/map.rs"
+harness = true
+
+[[test]]
+name = "set_benchmarks"
+path = "benches/set.rs"
 harness = true
 
 [features]

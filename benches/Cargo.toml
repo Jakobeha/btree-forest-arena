@@ -5,8 +5,13 @@ edition = "2021"
 publish = false
 
 [[bench]]
-name = "benches"
-path = "benches.rs"
+name = "map"
+path = "map.rs"
+harness = false
+
+[[bench]]
+name = "set"
+path = "set.rs"
 harness = false
 
 [profile.bench]

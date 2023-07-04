@@ -47,16 +47,26 @@ fn main() {
 }
 ```
 
+## Safety
+
+This library makes heavy use of `unsafe` and is only partially tested with MIRI. There are tests for various operations, but it's still in the early phases.
+
 ## Benchmarks
 
-Benchmarks are run for a sequence of operations including insertion, retrieval, iteration, and removal. We vary the # and size of maps.
+Benchmarks are run for a sequence of operations including insertion, retrieval, iteration, and removal. We vary the # and size of maps and sets.
+
+This library performs slightly faster than `std` on very small maps and sets, but slower otherwise.
 
 [Full Report](criterion/report/index.html)
 
-![1_map_3000_entries](criterion/1_map_3000_entries/report/violin.svg)
-![10_maps_300_entries](criterion/10_maps_3000_entries/report/violin.svg)
-![100_maps_30_entries](criterion/100_maps_3000_entries/report/violin.svg)
-![1000_maps_3_entries](criterion/1000_maps_3000_entries/report/violin.svg)
+![1_map_3000_operations](criterion/bench_1_map_3000_operations/report/violin.svg)
+![10_maps_300_operations](criterion/bench_10_maps_300_operations/report/violin.svg)
+![100_maps_30_operations](criterion/bench_100_maps_30_operations/report/violin.svg)
+![1000_maps_3_operations](criterion/bench_1000_maps_3_operations/report/violin.svg)
+![1_set_3000_operations](criterion/bench_1_set_3000_operations/report/violin.svg)
+![10_sets_300_operations](criterion/bench_10_sets_300_operations/report/violin.svg)
+![100_sets_30_operations](criterion/bench_100_sets_30_operations/report/violin.svg)
+![1000_sets_3_operations](criterion/bench_1000_sets_3_operations/report/violin.svg)
 
 ## License
 
