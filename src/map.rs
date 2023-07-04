@@ -41,7 +41,7 @@ enum Find<K, V> {
 ///
 /// These bounds are always inclusive. Use `Option<NodeBounds<'a, K, V>>` to represent a
 /// potentially-empty range.
-pub struct NodeBounds<K, V> {
+struct NodeBounds<K, V> {
     /// Start node (inclusive)
     start_node: NodePtr<K, V>,
     /// End node (inclusive)
@@ -239,7 +239,8 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// if we go from `Some` to `None`. Also returns a value.
     ///
     /// Also, if the function `panic`s we always remove the key, so this is effectively a
-    /// special-case of `replace_with` for the map.
+    /// special-case of [`replace_with`](https://docs.rs/replace_with/latest/replace_with/) for the
+    /// map.
     #[inline]
     pub fn update_and_return<R>(
         &mut self,
@@ -294,7 +295,8 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// if we go from `Some` to `None`.
     ///
     /// Also, if the function `panic`s we always remove the key, so this is effectively a
-    /// special-case of `replace_with` for the map.
+    /// special-case of [`replace_with`](https://docs.rs/replace_with/latest/replace_with/) for the
+    /// map.
     #[inline]
     pub fn update(&mut self, key: K, update: impl FnOnce(Option<V>) -> Option<V>)
     where
