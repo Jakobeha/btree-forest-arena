@@ -1,4 +1,4 @@
-# btree-forest-arena: B-trees backed by a slab/arena to reduce allocations and increase locality
+# btree-plus-store: B-trees backed by a slab/arena to reduce allocations and increase locality
 
 [![CI](https://github.com/Jakobeha/btree-store/workflows/CI/badge.svg)](https://github.com/Jakobeha/btree-store/actions)
 [![Crate informations](https://img.shields.io/crates/v/btree-store.svg?style=flat-square)](https://crates.io/crates/btree-store)
