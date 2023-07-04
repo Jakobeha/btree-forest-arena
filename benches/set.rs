@@ -1,9 +1,9 @@
 extern crate rand;
 
+use btree_plus_store::{BTreeSet as MyBTreeSet, BTreeStore};
 use std::collections::BTreeSet as StdBTreeSet;
-use btree_plus_store::{BTreeStore, BTreeSet as MyBTreeSet};
 
-use rand::{Rng, rngs::SmallRng, SeedableRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 // region benchmark abstraction / implementation
 trait Bencher {
@@ -42,18 +42,30 @@ impl Bencher for MockBencher {
 trait BTreeSet<'store, T: Ord + 'store>: 'store {
     /// `()` if the store is owned
     type SharedStore: Default;
-    type Iter<'a>: Iterator<Item = &'a T> where 'store: 'a;
-    type Range<'a>: Iterator<Item = &'a T> where 'store: 'a;
+    type Iter<'a>: Iterator<Item = &'a T>
+    where
+        'store: 'a;
+    type Range<'a>: Iterator<Item = &'a T>
+    where
+        'store: 'a;
 
     fn new_in(store: &'store Self::SharedStore) -> Self;
     fn insert(&mut self, elem: T) -> bool;
     fn remove(&mut self, elem: &T) -> bool;
     fn remove_first(&mut self) -> Option<T>;
     fn is_empty(&self) -> bool;
-    fn first<'a>(&'a self) -> Option<&'a T> where 'store: 'a;
-    fn contains<'a>(&'a self, elem: &T) -> bool where 'store: 'a;
-    fn iter<'a>(&'a self) -> Self::Iter<'a> where 'store: 'a;
-    fn range<'a>(&'a self, range: std::ops::Range<T>) -> Self::Range<'a> where 'store: 'a;
+    fn first<'a>(&'a self) -> Option<&'a T>
+    where
+        'store: 'a;
+    fn contains<'a>(&'a self, elem: &T) -> bool
+    where
+        'store: 'a;
+    fn iter<'a>(&'a self) -> Self::Iter<'a>
+    where
+        'store: 'a;
+    fn range<'a>(&'a self, range: std::ops::Range<T>) -> Self::Range<'a>
+    where
+        'store: 'a;
 }
 // endregion
 
@@ -76,22 +88,34 @@ macro_rules! impl_b_tree_set_common {
             self.is_empty()
         }
 
-        fn first<'a>(&'a self) -> Option<&'a $T> where $store: 'a {
+        fn first<'a>(&'a self) -> Option<&'a $T>
+        where
+            $store: 'a,
+        {
             self.first()
         }
 
-        fn contains<'a>(&'a self, elem: &$T) -> bool where $store: 'a {
+        fn contains<'a>(&'a self, elem: &$T) -> bool
+        where
+            $store: 'a,
+        {
             self.contains(elem)
         }
 
-        fn iter<'a>(&'a self) -> Self::Iter<'a> where $store: 'a {
+        fn iter<'a>(&'a self) -> Self::Iter<'a>
+        where
+            $store: 'a,
+        {
             self.iter()
         }
 
-        fn range<'a>(&'a self, range: std::ops::Range<$T>) -> Self::Range<'a> where $store: 'a {
+        fn range<'a>(&'a self, range: std::ops::Range<$T>) -> Self::Range<'a>
+        where
+            $store: 'a,
+        {
             self.range(range)
         }
-    }
+    };
 }
 
 impl<'store, T: Ord + 'store> BTreeSet<'store, T> for StdBTreeSet<T> {
@@ -124,7 +148,7 @@ fn bench_operations<'store, T: BTreeSet<'store, usize>, B: Bencher>(
     store: &'store T::SharedStore,
     b: &mut B,
     n_sets: usize,
-    n_operations: usize
+    n_operations: usize,
 ) {
     let mut rng = SmallRng::seed_from_u64(42);
     let mut sets = Vec::with_capacity(n_sets);
@@ -248,8 +272,11 @@ macro_rules! generate_benches {
 #[cfg(feature = "bench")]
 fn sample_size() -> usize {
     std::env::var("SAMPLE_SIZE")
-        .ok().filter(|s| !s.is_empty())
-        .map_or(10, |s| s.parse().expect("SAMPLE_SIZE must be an integer or unset"))
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or(10, |s| {
+            s.parse().expect("SAMPLE_SIZE must be an integer or unset")
+        })
 }
 
 #[cfg(feature = "bench")]

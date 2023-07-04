@@ -1,5 +1,5 @@
+use crate::node::{Node, NodePtr};
 use std::marker::PhantomData;
-use crate::node::{NodePtr, Node};
 
 /// Iterates a node's keys and values forwards or backwards.
 pub struct Cursor<'a, K, V> {

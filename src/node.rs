@@ -1,4 +1,5 @@
-use std::mem::{ManuallyDrop, MaybeUninit, swap};
+use std::cmp::Ordering;
+use std::mem::{swap, ManuallyDrop, MaybeUninit};
 use std::ops::{Bound, RangeBounds};
 use std::ptr::{copy, copy_nonoverlapping};
 
@@ -70,8 +71,8 @@ impl<K, V> Node<K, V> {
                     vals: maybe_uninit_array(),
                     prev: None,
                     next: None,
-                })
-            }
+                }),
+            },
         }
     }
 
@@ -84,20 +85,22 @@ impl<K, V> Node<K, V> {
             keys: maybe_uninit_array(),
             d: NodeData {
                 internal: ManuallyDrop::new(InternalData {
-                    edges: maybe_uninit_array()
-                })
-            }
+                    edges: maybe_uninit_array(),
+                }),
+            },
         }
     }
 
     #[inline]
     pub fn parent(&self) -> Option<(NodePtr<K, V>, u16)> {
-        self.parent.map(|p| (p, unsafe { self.parent_idx.assume_init() }))
+        self.parent
+            .map(|p| (p, unsafe { self.parent_idx.assume_init() }))
     }
 
     #[inline]
     pub fn parent_idx(&self) -> Option<u16> {
-        self.parent.map(|_| unsafe { self.parent_idx.assume_init() })
+        self.parent
+            .map(|_| unsafe { self.parent_idx.assume_init() })
     }
 
     #[inline]
@@ -147,26 +150,42 @@ impl<K, V> Node<K, V> {
     #[inline]
     pub unsafe fn val(&self, idx: u16) -> &V {
         debug_assert!(idx < self.len);
-        self.d.leaf().vals.get_unchecked(idx as usize).assume_init_ref()
+        self.d
+            .leaf()
+            .vals
+            .get_unchecked(idx as usize)
+            .assume_init_ref()
     }
 
     #[inline]
     pub unsafe fn val_mut(&mut self, idx: u16) -> &mut V {
         debug_assert!(idx < self.len);
-        self.d.leaf_mut().vals.get_unchecked_mut(idx as usize).assume_init_mut()
+        self.d
+            .leaf_mut()
+            .vals
+            .get_unchecked_mut(idx as usize)
+            .assume_init_mut()
     }
 
     /// Copies the value, you must call `write_val` or `remove` and then `forget`.
     #[inline]
     pub unsafe fn read_val(&mut self, idx: u16) -> V {
         debug_assert!(idx < self.len);
-        self.d.leaf().vals.get_unchecked(idx as usize).assume_init_read()
+        self.d
+            .leaf()
+            .vals
+            .get_unchecked(idx as usize)
+            .assume_init_read()
     }
 
     #[inline]
     pub unsafe fn write_val(&mut self, idx: u16, val: V) {
         debug_assert!(idx < self.len);
-        self.d.leaf_mut().vals.get_unchecked_mut(idx as usize).write(val);
+        self.d
+            .leaf_mut()
+            .vals
+            .get_unchecked_mut(idx as usize)
+            .write(val);
     }
 
     #[inline]
@@ -174,7 +193,11 @@ impl<K, V> Node<K, V> {
         debug_assert!(idx < self.len);
         (
             self.keys.get_unchecked(idx as usize).assume_init_ref(),
-            self.d.leaf().vals.get_unchecked(idx as usize).assume_init_ref(),
+            self.d
+                .leaf()
+                .vals
+                .get_unchecked(idx as usize)
+                .assume_init_ref(),
         )
     }
 
@@ -183,7 +206,11 @@ impl<K, V> Node<K, V> {
         debug_assert!(idx < self.len);
         (
             self.keys.get_unchecked(idx as usize).assume_init_ref(),
-            self.d.leaf_mut().vals.get_unchecked_mut(idx as usize).assume_init_mut(),
+            self.d
+                .leaf_mut()
+                .vals
+                .get_unchecked_mut(idx as usize)
+                .assume_init_mut(),
         )
     }
 
@@ -192,20 +219,32 @@ impl<K, V> Node<K, V> {
         debug_assert!(idx < self.len);
         (
             self.keys.get_unchecked(idx as usize).assume_init_read(),
-            self.d.leaf().vals.get_unchecked(idx as usize).assume_init_read(),
+            self.d
+                .leaf()
+                .vals
+                .get_unchecked(idx as usize)
+                .assume_init_read(),
         )
     }
 
     #[inline]
     pub unsafe fn edge(&self, idx: u16) -> NodePtr<K, V> {
         debug_assert!(idx < self.len + 1);
-        self.d.internal().edges.get_unchecked(idx as usize).assume_init()
+        self.d
+            .internal()
+            .edges
+            .get_unchecked(idx as usize)
+            .assume_init()
     }
 
     #[inline]
     pub unsafe fn edge_mut(&mut self, idx: u16) -> &mut NodePtr<K, V> {
         debug_assert!(idx < self.len + 1);
-        self.d.internal_mut().edges.get_unchecked_mut(idx as usize).assume_init_mut()
+        self.d
+            .internal_mut()
+            .edges
+            .get_unchecked_mut(idx as usize)
+            .assume_init_mut()
     }
 
     #[inline]
@@ -226,20 +265,21 @@ impl<K, V> Node<K, V> {
 
     #[inline]
     pub unsafe fn vals_mut(&mut self) -> &mut [V] {
-        &mut *(&mut self.d.leaf_mut().vals[..self.len as usize] as *mut [MaybeUninit<V>] as *mut [V])
+        &mut *(&mut self.d.leaf_mut().vals[..self.len as usize] as *mut [MaybeUninit<V>]
+            as *mut [V])
     }
 
     #[inline]
     pub unsafe fn edges(&self) -> &[NodePtr<K, V>] {
-        &*(&self.d.internal().edges[..(self.len + 1) as usize] as *const [MaybeUninit<NodePtr<K, V>>]
-            as *const [NodePtr<K, V>])
+        &*(&self.d.internal().edges[..(self.len + 1) as usize]
+            as *const [MaybeUninit<NodePtr<K, V>>] as *const [NodePtr<K, V>])
     }
 
     #[allow(unused)]
     #[inline]
     pub unsafe fn edges_mut(&mut self) -> &mut [NodePtr<K, V>] {
-        &mut *(&mut self.d.internal_mut().edges[..(self.len + 1) as usize] as *mut [MaybeUninit<NodePtr<K, V>>]
-            as *mut [NodePtr<K, V>])
+        &mut *(&mut self.d.internal_mut().edges[..(self.len + 1) as usize]
+            as *mut [MaybeUninit<NodePtr<K, V>>] as *mut [NodePtr<K, V>])
     }
 
     #[inline]
@@ -254,23 +294,44 @@ impl<K, V> Node<K, V> {
     pub unsafe fn first_key_value_mut(&mut self) -> (&K, &mut V) {
         debug_assert!(self.len > 0);
         let key = self.keys.get_unchecked(0).assume_init_ref();
-        let val = self.d.leaf_mut().vals.get_unchecked_mut(0).assume_init_mut();
+        let val = self
+            .d
+            .leaf_mut()
+            .vals
+            .get_unchecked_mut(0)
+            .assume_init_mut();
         (key, val)
     }
 
     #[inline]
     pub unsafe fn last_key_value(&self) -> (&K, &V) {
         debug_assert!(self.len > 0);
-        let key = self.keys.get_unchecked(self.len as usize - 1).assume_init_ref();
-        let val = self.d.leaf().vals.get_unchecked(self.len as usize - 1).assume_init_ref();
+        let key = self
+            .keys
+            .get_unchecked(self.len as usize - 1)
+            .assume_init_ref();
+        let val = self
+            .d
+            .leaf()
+            .vals
+            .get_unchecked(self.len as usize - 1)
+            .assume_init_ref();
         (key, val)
     }
 
     #[inline]
     pub unsafe fn last_key_value_mut(&mut self) -> (&K, &mut V) {
         debug_assert!(self.len > 0);
-        let key = self.keys.get_unchecked(self.len as usize - 1).assume_init_ref();
-        let val = self.d.leaf_mut().vals.get_unchecked_mut(self.len as usize - 1).assume_init_mut();
+        let key = self
+            .keys
+            .get_unchecked(self.len as usize - 1)
+            .assume_init_ref();
+        let val = self
+            .d
+            .leaf_mut()
+            .vals
+            .get_unchecked_mut(self.len as usize - 1)
+            .assume_init_mut();
         (key, val)
     }
 
@@ -285,12 +346,12 @@ impl<K, V> Node<K, V> {
             unsafe_copy_slice_overlapping(
                 &mut self.keys,
                 idx as usize + 1..self.len as usize + 1,
-                idx as usize..self.len as usize
+                idx as usize..self.len as usize,
             );
             unsafe_copy_slice_overlapping(
                 &mut self.d.leaf_mut().vals,
                 idx as usize + 1..self.len as usize + 1,
-                idx as usize..self.len as usize
+                idx as usize..self.len as usize,
             );
         }
 
@@ -305,7 +366,10 @@ impl<K, V> Node<K, V> {
     #[inline]
     pub unsafe fn insert_edge(&mut self, idx: u16, after_key: bool, key: K, edge: NodePtr<K, V>) {
         debug_assert!(idx <= self.len);
-        debug_assert!((self.len as usize) < M, "InternalNode::insert_edge would overflow");
+        debug_assert!(
+            (self.len as usize) < M,
+            "InternalNode::insert_edge would overflow"
+        );
         debug_assert_eq!(
             edge.as_ref().parent_idx(),
             Some(match after_key {
@@ -320,21 +384,25 @@ impl<K, V> Node<K, V> {
             unsafe_copy_slice_overlapping(
                 &mut self.keys,
                 idx as usize + 1..self.len as usize + 1,
-                idx as usize..self.len as usize
+                idx as usize..self.len as usize,
             );
         }
         let after_edge_idx = match after_key {
             false => idx,
-            true => idx + 1
+            true => idx + 1,
         };
         if after_edge_idx < self.len + 1 {
             unsafe_copy_slice_overlapping(
                 &mut self.d.internal_mut().edges,
                 after_edge_idx as usize + 1..self.len as usize + 2,
-                after_edge_idx as usize..self.len as usize + 1
+                after_edge_idx as usize..self.len as usize + 1,
             );
             // Update later edge parent idxs
-            for edge in self.d.internal_mut().edges[after_edge_idx as usize + 1..self.len as usize + 2].iter_mut().map(|e| e.assume_init_mut()) {
+            for edge in self.d.internal_mut().edges
+                [after_edge_idx as usize + 1..self.len as usize + 2]
+                .iter_mut()
+                .map(|e| e.assume_init_mut())
+            {
                 *edge.as_mut().parent_idx.assume_init_mut() += 1;
             }
         }
@@ -376,12 +444,12 @@ impl<K, V> Node<K, V> {
             unsafe_copy_slice_overlapping(
                 &mut self.keys,
                 idx as usize..self.len as usize - 1,
-                idx as usize + 1..self.len as usize
+                idx as usize + 1..self.len as usize,
             );
             unsafe_copy_slice_overlapping(
                 &mut self.d.leaf_mut().vals,
                 idx as usize..self.len as usize - 1,
-                idx as usize + 1..self.len as usize
+                idx as usize + 1..self.len as usize,
             );
         }
 
@@ -396,7 +464,7 @@ impl<K, V> Node<K, V> {
         debug_assert!(self.len > 0);
         let edge_idx = match after_key {
             false => idx,
-            true => idx + 1
+            true => idx + 1,
         };
         debug_assert_eq!(
             self.edge(edge_idx).as_ref().parent_idx(),
@@ -413,17 +481,20 @@ impl<K, V> Node<K, V> {
             unsafe_copy_slice_overlapping(
                 &mut self.keys,
                 idx as usize..self.len as usize - 1,
-                idx as usize + 1..self.len as usize
+                idx as usize + 1..self.len as usize,
             );
         }
         if edge_idx < self.len {
             unsafe_copy_slice_overlapping(
                 &mut self.d.internal_mut().edges,
                 edge_idx as usize..self.len as usize,
-                edge_idx as usize + 1..self.len as usize + 1
+                edge_idx as usize + 1..self.len as usize + 1,
             );
             // Update later edge parent idxs
-            for edge in self.d.internal_mut().edges[edge_idx as usize..self.len as usize].iter_mut().map(|e| e.assume_init_mut()) {
+            for edge in self.d.internal_mut().edges[edge_idx as usize..self.len as usize]
+                .iter_mut()
+                .map(|e| e.assume_init_mut())
+            {
                 *edge.as_mut().parent_idx.assume_init_mut() -= 1;
             }
         }
@@ -474,9 +545,15 @@ impl<K, V> Node<K, V> {
     /// `self.d.leaf().prev`, `right.d.leaf().next`, and `self.d.leaf().prev.next` are set, but you need to set
     /// `self.d.leaf().next`, `right.d.leaf().prev`, and `right.d.leaf().next.prev`.
     #[inline]
-    pub unsafe fn split_leaf(&mut self, mut idx: u16, key: &mut K, mut val: V) -> Node<K, V> where K: Clone {
+    pub unsafe fn split_leaf(&mut self, mut idx: u16, key: &mut K, mut val: V) -> Node<K, V>
+    where
+        K: Clone,
+    {
         debug_assert!(idx <= self.len);
-        debug_assert!(self.len as usize >= M / 2, "LeafNode::split_leaf would underflow");
+        debug_assert!(
+            self.len as usize >= M / 2,
+            "LeafNode::split_leaf would underflow"
+        );
 
         let median = self.len / 2;
         let mut right = Node::leaf();
@@ -494,8 +571,14 @@ impl<K, V> Node<K, V> {
         }
 
         // Now we just split and insert the middle into one of the nodes
-        unsafe_copy_slice_nonoverlapping(&mut right.keys[1..median as usize + 1], &self.keys[median as usize..self.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut right.d.leaf_mut().vals[1..median as usize + 1], &self.d.leaf().vals[median as usize..self.len as usize]);
+        unsafe_copy_slice_nonoverlapping(
+            &mut right.keys[1..median as usize + 1],
+            &self.keys[median as usize..self.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut right.d.leaf_mut().vals[1..median as usize + 1],
+            &self.d.leaf().vals[median as usize..self.len as usize],
+        );
         // Remember: this is a B+ tree, so we copy the key in the leaf node, and write the val
         // instead of propagating it to the internal.
         right.keys[0].write(key.clone());
@@ -512,10 +595,22 @@ impl<K, V> Node<K, V> {
     /// `idx` is actually redundant here, you must call `set_parent` on `edge` before. You must also
     /// set the parent node on all nodes in `right` (the returned node).
     #[inline]
-    pub unsafe fn split_internal(&mut self, mut idx: u16, key: &mut K, mut edge: NodePtr<K, V>) -> Node<K, V> {
+    pub unsafe fn split_internal(
+        &mut self,
+        mut idx: u16,
+        key: &mut K,
+        mut edge: NodePtr<K, V>,
+    ) -> Node<K, V> {
         debug_assert!(idx <= self.len);
-        debug_assert!(self.len as usize >= M / 2, "InternalNode::split_internal would underflow");
-        debug_assert_eq!(edge.as_ref().parent_idx(), Some(idx + 1), "InternalNode::split_internal idx is redundant and should be edge.parent_idx - 1");
+        debug_assert!(
+            self.len as usize >= M / 2,
+            "InternalNode::split_internal would underflow"
+        );
+        debug_assert_eq!(
+            edge.as_ref().parent_idx(),
+            Some(idx + 1),
+            "InternalNode::split_internal idx is redundant and should be edge.parent_idx - 1"
+        );
 
         let median = self.len / 2;
         let mut right = Node::internal();
@@ -542,12 +637,22 @@ impl<K, V> Node<K, V> {
         }
 
         // Now we just split and insert the middle into one of the nodes
-        unsafe_copy_slice_nonoverlapping(&mut right.keys[..median as usize], &self.keys[median as usize..self.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut right.d.internal_mut().edges[1..median as usize + 1], &self.d.internal().edges[median as usize + 1..self.len as usize + 1]);
+        unsafe_copy_slice_nonoverlapping(
+            &mut right.keys[..median as usize],
+            &self.keys[median as usize..self.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut right.d.internal_mut().edges[1..median as usize + 1],
+            &self.d.internal().edges[median as usize + 1..self.len as usize + 1],
+        );
         // Put the edge in index 0 in right, so that it's after the split key
         right.d.internal_mut().edges[0].write(edge);
         // Update parent_idxs in right (including the edge we just inserted)
-        for (idx, mut edge) in right.d.internal_mut().edges[..median as usize + 1].iter_mut().enumerate().map(|(idx, e)| (idx as u16, e.assume_init())) {
+        for (idx, mut edge) in right.d.internal_mut().edges[..median as usize + 1]
+            .iter_mut()
+            .enumerate()
+            .map(|(idx, e)| (idx as u16, e.assume_init()))
+        {
             *edge.as_mut().parent_idx.assume_init_mut() = idx;
         }
         right.len = self.len - median;
@@ -568,13 +673,30 @@ impl<K, V> Node<K, V> {
             prev.parent_idx().expect("sanity check failed") + 1, self.parent_idx().expect("sanity check failed"),
             "sanity check failed: prev.parent_idx + 1 != self.parent_idx (the failure happened before this function call, it was only detected now)"
         );
-        debug_assert!((prev.len + self.len) as usize <= M, "nodes are too big to merge");
+        debug_assert!(
+            (prev.len + self.len) as usize <= M,
+            "nodes are too big to merge"
+        );
 
         let new_len = prev.len + self.len;
-        unsafe_copy_slice_overlapping(&mut self.keys, prev.len as usize..new_len as usize, ..self.len as usize);
-        unsafe_copy_slice_overlapping(&mut self.d.leaf_mut().vals, prev.len as usize..new_len as usize, ..self.len as usize);
-        unsafe_copy_slice_nonoverlapping(&mut self.keys[..prev.len as usize], &prev.keys[..prev.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut self.d.leaf_mut().vals[..prev.len as usize], &prev.d.leaf().vals[..prev.len as usize]);
+        unsafe_copy_slice_overlapping(
+            &mut self.keys,
+            prev.len as usize..new_len as usize,
+            ..self.len as usize,
+        );
+        unsafe_copy_slice_overlapping(
+            &mut self.d.leaf_mut().vals,
+            prev.len as usize..new_len as usize,
+            ..self.len as usize,
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.keys[..prev.len as usize],
+            &prev.keys[..prev.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.d.leaf_mut().vals[..prev.len as usize],
+            &prev.d.leaf().vals[..prev.len as usize],
+        );
         self.len = new_len;
         self.set_prev(prev.prev());
     }
@@ -592,11 +714,20 @@ impl<K, V> Node<K, V> {
             self.parent_idx().expect("sanity check failed") + 1, next.parent_idx().expect("sanity check failed"),
             "sanity check failed: self.parent_idx + 1 != next.parent_idx (the failure happened before this function call, it was only detected now)"
         );
-        debug_assert!((self.len + next.len) as usize <= M, "nodes are too big to merge");
+        debug_assert!(
+            (self.len + next.len) as usize <= M,
+            "nodes are too big to merge"
+        );
 
         let new_len = self.len + next.len;
-        unsafe_copy_slice_nonoverlapping(&mut self.keys[self.len as usize..new_len as usize], &next.keys[..next.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut self.d.leaf_mut().vals[self.len as usize..new_len as usize], &next.d.leaf().vals[..next.len as usize]);
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.keys[self.len as usize..new_len as usize],
+            &next.keys[..next.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.d.leaf_mut().vals[self.len as usize..new_len as usize],
+            &next.d.leaf().vals[..next.len as usize],
+        );
         self.len = new_len;
         self.set_next(next.next());
     }
@@ -613,17 +744,37 @@ impl<K, V> Node<K, V> {
             prev.parent_idx().expect("sanity check failed") + 1, self.parent_idx().expect("sanity check failed"),
             "sanity check failed: prev.parent_idx + 1 != self.parent_idx (the failure happened before this function call, it was only detected now)"
         );
-        debug_assert!(((prev.len + self.len) as usize) < M, "nodes are too big to merge");
+        debug_assert!(
+            ((prev.len + self.len) as usize) < M,
+            "nodes are too big to merge"
+        );
 
         let new_len = prev.len + self.len + 1;
-        unsafe_copy_slice_overlapping(&mut self.keys, prev.len as usize + 1..new_len as usize, ..self.len as usize);
-        unsafe_copy_slice_overlapping(&mut self.d.internal_mut().edges, prev.len as usize + 1..new_len as usize + 1, ..self.len as usize + 1);
+        unsafe_copy_slice_overlapping(
+            &mut self.keys,
+            prev.len as usize + 1..new_len as usize,
+            ..self.len as usize,
+        );
+        unsafe_copy_slice_overlapping(
+            &mut self.d.internal_mut().edges,
+            prev.len as usize + 1..new_len as usize + 1,
+            ..self.len as usize + 1,
+        );
         // Update edge parent indices
-        for edge in self.d.internal_mut().edges[prev.len as usize + 1..new_len as usize + 1].iter_mut().map(|e| e.assume_init_mut()) {
+        for edge in self.d.internal_mut().edges[prev.len as usize + 1..new_len as usize + 1]
+            .iter_mut()
+            .map(|e| e.assume_init_mut())
+        {
             *edge.as_mut().parent_idx.assume_init_mut() += prev.len + 1;
         }
-        unsafe_copy_slice_nonoverlapping(&mut self.keys[..prev.len as usize], &prev.keys[..prev.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut self.d.internal_mut().edges[..prev.len as usize + 1], &prev.d.internal().edges[..prev.len as usize + 1]);
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.keys[..prev.len as usize],
+            &prev.keys[..prev.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.d.internal_mut().edges[..prev.len as usize + 1],
+            &prev.d.internal().edges[..prev.len as usize + 1],
+        );
         self.keys[prev.len as usize].write(middle_key);
         self.len = new_len;
     }
@@ -640,13 +791,25 @@ impl<K, V> Node<K, V> {
             self.parent_idx().expect("sanity check failed") + 1, next.parent_idx().expect("sanity check failed"),
             "sanity check failed: self.parent_idx + 1 != next.parent_idx (the failure happened before this function call, it was only detected now)"
         );
-        debug_assert!(((self.len + next.len) as usize) < M, "nodes are too big to merge");
+        debug_assert!(
+            ((self.len + next.len) as usize) < M,
+            "nodes are too big to merge"
+        );
         let new_len = self.len + next.len + 1;
         self.keys[self.len as usize].write(middle_key);
-        unsafe_copy_slice_nonoverlapping(&mut self.keys[self.len as usize + 1..new_len as usize], &next.keys[..next.len as usize]);
-        unsafe_copy_slice_nonoverlapping(&mut self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1], &next.d.internal().edges[..next.len as usize + 1]);
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.keys[self.len as usize + 1..new_len as usize],
+            &next.keys[..next.len as usize],
+        );
+        unsafe_copy_slice_nonoverlapping(
+            &mut self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1],
+            &next.d.internal().edges[..next.len as usize + 1],
+        );
         // Update edge parent indices
-        for edge in self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1].iter_mut().map(|e| e.assume_init_mut()) {
+        for edge in self.d.internal_mut().edges[self.len as usize + 1..new_len as usize + 1]
+            .iter_mut()
+            .map(|e| e.assume_init_mut())
+        {
             *edge.as_mut().parent_idx.assume_init_mut() += self.len + 1;
         }
         self.len = new_len;
@@ -655,24 +818,27 @@ impl<K, V> Node<K, V> {
 
 impl<K, V> NodeData<K, V> {
     pub unsafe fn leaf(&self) -> &LeafData<K, V> {
-        &*self.leaf
+        &self.leaf
     }
 
     pub unsafe fn leaf_mut(&mut self) -> &mut LeafData<K, V> {
-        &mut *self.leaf
+        &mut self.leaf
     }
 
     pub unsafe fn internal(&self) -> &InternalData<K, V> {
-        &*self.internal
+        &self.internal
     }
 
     pub unsafe fn internal_mut(&mut self) -> &mut InternalData<K, V> {
-        &mut *self.internal
+        &mut self.internal
     }
 }
 
 #[inline]
-pub unsafe fn normalize_address<K, V>(node: NodePtr<K, V>, idx: u16) -> Option<(NodePtr<K, V>, u16)> {
+pub unsafe fn normalize_address<K, V>(
+    node: NodePtr<K, V>,
+    idx: u16,
+) -> Option<(NodePtr<K, V>, u16)> {
     let node_ref = node.as_ref();
     if idx < node_ref.len {
         Some((node, idx))
@@ -695,15 +861,15 @@ pub unsafe fn address_before<K, V>(node: NodePtr<K, V>, idx: u16) -> Option<(Nod
 #[inline]
 pub unsafe fn address_after<K, V>(node: NodePtr<K, V>, idx: u16) -> Option<(NodePtr<K, V>, u16)> {
     let node_ref = node.as_ref();
-    if idx < node_ref.len - 1 {
-        Some((node, idx + 1))
-    } else if idx == node_ref.len - 1 {
-        node_ref.next().map(|node| (node, 0))
-    } else {
-        // Not normalize AND we want the address after anyways. Currently this branch is never
-        // actually reached, but if it was this is what we would do
-        debug_assert_eq!(idx, node_ref.len);
-        node_ref.next().map(|node| (node, 1))
+    match idx.cmp(&(node_ref.len - 1)) {
+        Ordering::Less => Some((node, idx + 1)),
+        Ordering::Equal => node_ref.next().map(|node| (node, 0)),
+        Ordering::Greater => {
+            // Not normalize AND we want the address after anyways. Currently this branch is never
+            // actually reached, but if it was this is what we would do
+            debug_assert_eq!(idx, node_ref.len);
+            node_ref.next().map(|node| (node, 1))
+        }
     }
 }
 
@@ -711,7 +877,7 @@ pub unsafe fn address_after<K, V>(node: NodePtr<K, V>, idx: u16) -> Option<(Node
 unsafe fn unsafe_copy_slice_overlapping<T>(
     data: &mut [T],
     dst: impl RangeBounds<usize>,
-    src: impl RangeBounds<usize>
+    src: impl RangeBounds<usize>,
 ) {
     let src_start = match src.start_bound() {
         Bound::Included(&n) => n,

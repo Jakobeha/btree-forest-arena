@@ -1,5 +1,5 @@
+use crate::node::{Node, NodePtr};
 use rustc_arena_modified::SlabArena;
-use crate::node::{NodePtr, Node};
 
 /// Arena to store nodes from multiple b-trees.
 pub struct BTreeStore<K, V> {

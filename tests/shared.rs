@@ -24,20 +24,30 @@ fn shared_between_2() {
 
     // check for a specific one.
     if movie_reviews.contains_key(&"Les Misérables") {
-        panic!("We've got {} reviews, but Les Misérables ain't one.",
-               movie_reviews.len());
+        panic!(
+            "We've got {} reviews, but Les Misérables ain't one.",
+            movie_reviews.len()
+        );
     }
     if book_reviews.contains_key(&"Introduction to COBOL") {
-        panic!("We've got {} reviews, but Introduction to COBOL ain't one.",
-               book_reviews.len());
+        panic!(
+            "We've got {} reviews, but Introduction to COBOL ain't one.",
+            book_reviews.len()
+        );
     }
 
     // oops, this review has a lot of spelling mistakes, let's delete it.
-    movie_reviews.remove(&"The Blues Brothers").expect("This review should exist");
+    movie_reviews
+        .remove(&"The Blues Brothers")
+        .expect("This review should exist");
 
     // delete some book reviews
-    book_reviews.remove(&"Introduction to Java").expect("This review should exist");
-    book_reviews.remove(&"Percy Jackson and the Lightning Thief").expect("This review should exist");
+    book_reviews
+        .remove(&"Introduction to Java")
+        .expect("This review should exist");
+    book_reviews
+        .remove(&"Percy Jackson and the Lightning Thief")
+        .expect("This review should exist");
     let None = book_reviews.remove(&"Percy Jackson and the Lightning Thief") else {
         panic!("This review was already removed")
     };
@@ -45,10 +55,13 @@ fn shared_between_2() {
     // look up the values associated with some keys.
     let to_find = ["Up!", "Office Space", "Hamlet", "Hunger Games"];
     assert_eq!(
-        to_find.iter().map(|book_or_movie| (
-            movie_reviews.get(book_or_movie).map(|e| *e),
-            book_reviews.get(book_or_movie).map(|e| *e)
-        )).collect::<Vec<_>>(),
+        to_find
+            .iter()
+            .map(|book_or_movie| (
+                movie_reviews.get(book_or_movie).map(|e| *e),
+                book_reviews.get(book_or_movie).map(|e| *e)
+            ))
+            .collect::<Vec<_>>(),
         [
             (None, None),
             (Some("Deals with real issues in the workplace."), None),

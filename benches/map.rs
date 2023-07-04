@@ -1,9 +1,9 @@
 extern crate rand;
 
+use btree_plus_store::{BTreeMap as MyBTreeMap, BTreeStore};
 use std::collections::BTreeMap as StdBTreeMap;
-use btree_plus_store::{BTreeStore, BTreeMap as MyBTreeMap};
 
-use rand::{Rng, rngs::SmallRng, SeedableRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 // region benchmark abstraction / implementation
 trait Bencher {
@@ -42,18 +42,30 @@ impl Bencher for MockBencher {
 trait BTreeMap<'store, K: Ord + 'store, V: 'store>: 'store {
     /// `()` if the store is owned
     type SharedStore: Default;
-    type Iter<'a>: Iterator<Item = (&'a K, &'a V)> where 'store: 'a;
-    type Range<'a>: Iterator<Item = (&'a K, &'a V)> where 'store: 'a;
+    type Iter<'a>: Iterator<Item = (&'a K, &'a V)>
+    where
+        'store: 'a;
+    type Range<'a>: Iterator<Item = (&'a K, &'a V)>
+    where
+        'store: 'a;
 
     fn new_in(store: &'store Self::SharedStore) -> Self;
     fn insert(&mut self, key: K, value: V) -> Option<V>;
     fn remove(&mut self, key: &K) -> Option<V>;
     fn remove_first(&mut self) -> Option<(K, V)>;
     fn is_empty(&self) -> bool;
-    fn first<'a>(&'a self) -> Option<(&'a K, &'a V)> where 'store: 'a;
-    fn get<'a>(&'a self, key: &K) -> Option<&'a V> where 'store: 'a;
-    fn iter<'a>(&'a self) -> Self::Iter<'a> where 'store: 'a;
-    fn range<'a>(&'a self, range: std::ops::Range<K>) -> Self::Range<'a> where 'store: 'a;
+    fn first<'a>(&'a self) -> Option<(&'a K, &'a V)>
+    where
+        'store: 'a;
+    fn get<'a>(&'a self, key: &K) -> Option<&'a V>
+    where
+        'store: 'a;
+    fn iter<'a>(&'a self) -> Self::Iter<'a>
+    where
+        'store: 'a;
+    fn range<'a>(&'a self, range: std::ops::Range<K>) -> Self::Range<'a>
+    where
+        'store: 'a;
 }
 // endregion
 
@@ -76,22 +88,34 @@ macro_rules! impl_b_tree_map_common {
             self.is_empty()
         }
 
-        fn first<'a>(&'a self) -> Option<(&'a K, &'a V)> where $store: 'a {
+        fn first<'a>(&'a self) -> Option<(&'a K, &'a V)>
+        where
+            $store: 'a,
+        {
             self.first_key_value()
         }
 
-        fn get<'a>(&'a self, key: &$K) -> Option<&'a V> where $store: 'a {
+        fn get<'a>(&'a self, key: &$K) -> Option<&'a V>
+        where
+            $store: 'a,
+        {
             self.get(key)
         }
 
-        fn iter<'a>(&'a self) -> Self::Iter<'a> where $store: 'a {
+        fn iter<'a>(&'a self) -> Self::Iter<'a>
+        where
+            $store: 'a,
+        {
             self.iter()
         }
 
-        fn range<'a>(&'a self, range: std::ops::Range<$K>) -> Self::Range<'a> where $store: 'a {
+        fn range<'a>(&'a self, range: std::ops::Range<$K>) -> Self::Range<'a>
+        where
+            $store: 'a,
+        {
             self.range(range)
         }
-    }
+    };
 }
 
 impl<'store, K: Ord + 'store, V: 'store> BTreeMap<'store, K, V> for StdBTreeMap<K, V> {
@@ -106,7 +130,9 @@ impl<'store, K: Ord + 'store, V: 'store> BTreeMap<'store, K, V> for StdBTreeMap<
     impl_b_tree_map_common!('store, K, V);
 }
 
-impl<'store, K: Clone + Ord + 'store, V: 'store> BTreeMap<'store, K, V> for MyBTreeMap<'store, K, V> {
+impl<'store, K: Clone + Ord + 'store, V: 'store> BTreeMap<'store, K, V>
+    for MyBTreeMap<'store, K, V>
+{
     type SharedStore = BTreeStore<K, V>;
     type Iter<'a> = btree_plus_store::map::Iter<'a, K, V> where 'store: 'a;
     type Range<'a> = btree_plus_store::map::Range<'a, K, V> where 'store: 'a;
@@ -124,7 +150,7 @@ fn bench_operations<'store, T: BTreeMap<'store, usize, usize>, B: Bencher>(
     store: &'store T::SharedStore,
     b: &mut B,
     n_maps: usize,
-    n_operations: usize
+    n_operations: usize,
 ) {
     let mut rng = SmallRng::seed_from_u64(42);
     let mut maps = Vec::with_capacity(n_maps);
@@ -248,8 +274,11 @@ macro_rules! generate_benches {
 #[cfg(feature = "bench")]
 fn sample_size() -> usize {
     std::env::var("SAMPLE_SIZE")
-        .ok().filter(|s| !s.is_empty())
-        .map_or(10, |s| s.parse().expect("SAMPLE_SIZE must be an integer or unset"))
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or(10, |s| {
+            s.parse().expect("SAMPLE_SIZE must be an integer or unset")
+        })
 }
 
 #[cfg(feature = "bench")]

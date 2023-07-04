@@ -6,14 +6,14 @@ use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem::{forget, MaybeUninit};
 use std::ops::RangeBounds;
-use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::ptr::{drop_in_place, NonNull};
 use std::thread::panicking;
 
-use crate::BTreeStore;
 use crate::cursor::Cursor;
-use crate::node::{address_after, address_before, M, Node, NodePtr, normalize_address};
+use crate::node::{address_after, address_before, normalize_address, Node, NodePtr, M};
 use crate::utils::PtrEq;
+use crate::BTreeStore;
 
 /// A b-tree map.
 ///
@@ -32,15 +32,9 @@ enum Find<K, V> {
     /// The tree is empty
     NoRoot,
     /// The entry would be before this address
-    Before {
-        node: NodePtr<K, V>,
-        idx: u16,
-    },
+    Before { node: NodePtr<K, V>, idx: u16 },
     /// The entry is at this address
-    At {
-        node: NodePtr<K, V>,
-        idx: u16,
-    }
+    At { node: NodePtr<K, V>, idx: u16 },
 }
 
 /// Pointer and index to the start and end entry for a range within a tree.
@@ -96,64 +90,73 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     // region retrieval
     /// Whether the map contains the key
     #[inline]
-    pub fn contains_key<Q: Ord>(&self, key: &Q) -> bool where K: Borrow<Q> {
-        match self.find(key) {
-            Find::At { .. } => true,
-            _ => false
-        }
+    pub fn contains_key<Q: Ord>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        matches!(self.find(key), Find::At { .. })
     }
 
     /// Returns a reference to the value corresponding to the key.
     #[inline]
-    pub fn get<Q: Ord>(&self, key: &Q) -> Option<&V> where K: Borrow<Q> {
+    pub fn get<Q: Ord>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+    {
         match self.find(key) {
-            Find::At { node, idx } => unsafe {
-                Some(node.as_ref().val(idx))
-            }
-            _ => None
+            Find::At { node, idx } => unsafe { Some(node.as_ref().val(idx)) },
+            _ => None,
         }
     }
 
     /// Returns a mutable reference to the value corresponding to the key.
     #[inline]
-    pub fn get_mut<Q: Ord>(&mut self, key: &Q) -> Option<&mut V> where K: Borrow<Q> {
+    pub fn get_mut<Q: Ord>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+    {
         match self.find(key) {
-            Find::At { mut node, idx } => unsafe {
-                Some(node.as_mut().val_mut(idx))
-            }
-            _ => None
+            Find::At { mut node, idx } => unsafe { Some(node.as_mut().val_mut(idx)) },
+            _ => None,
         }
     }
 
     /// Returns the first key and value
     #[inline]
     pub fn first_key_value(&self) -> Option<(&K, &V)> {
-        self.first_leaf().map(|node| unsafe { node.as_ref().first_key_value() })
+        self.first_leaf()
+            .map(|node| unsafe { node.as_ref().first_key_value() })
     }
 
     /// Returns the first key and mutable value
     #[inline]
     pub fn first_key_value_mut(&mut self) -> Option<(&K, &mut V)> {
-        self.first_leaf().map(|mut node| unsafe { node.as_mut().first_key_value_mut() })
+        self.first_leaf()
+            .map(|mut node| unsafe { node.as_mut().first_key_value_mut() })
     }
 
     /// Returns the last key and value
     #[inline]
     pub fn last_key_value(&self) -> Option<(&K, &V)> {
-        self.last_leaf().map(|node| unsafe { node.as_ref().last_key_value() })
+        self.last_leaf()
+            .map(|node| unsafe { node.as_ref().last_key_value() })
     }
 
     /// Returns the last key and mutable value
     #[inline]
     pub fn last_key_value_mut(&mut self) -> Option<(&K, &mut V)> {
-        self.last_leaf().map(|mut node| unsafe { node.as_mut().last_key_value_mut() })
+        self.last_leaf()
+            .map(|mut node| unsafe { node.as_mut().last_key_value_mut() })
     }
     // endregion
 
     // region insertion and removal
     /// Inserts a key-value pair into the map.
     #[inline]
-    pub fn insert(&mut self, key: K, val: V) -> Option<V> where K: Clone + Ord {
+    pub fn insert(&mut self, key: K, val: V) -> Option<V>
+    where
+        K: Clone + Ord,
+    {
         match self.find(&key) {
             Find::NoRoot => {
                 self.insert_root(key, val);
@@ -162,35 +165,42 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             Find::Before { node, idx } => unsafe {
                 self.insert_before(key, val, node, idx);
                 None
-            }
-            Find::At { mut node, idx } => unsafe {
-                Some(node.as_mut().replace_val(idx, val))
-            }
+            },
+            Find::At { mut node, idx } => unsafe { Some(node.as_mut().replace_val(idx, val)) },
         }
     }
 
     /// Removes the equivalent key and returns the actual key and value, if present.
     #[inline]
-    pub fn remove_key_value<Q: Ord>(&mut self, key: &Q) -> Option<(K, V)> where K: Clone + Borrow<Q> {
+    pub fn remove_key_value<Q: Ord>(&mut self, key: &Q) -> Option<(K, V)>
+    where
+        K: Clone + Borrow<Q>,
+    {
         match self.find(key) {
             Find::NoRoot | Find::Before { .. } => None,
             Find::At { mut node, idx } => unsafe {
                 let (key, val) = node.as_mut().remove_val(idx);
                 self.post_removal(node);
                 Some((key, val))
-            }
+            },
         }
     }
 
     /// Removes the equivalent key and returns the value if present.
     #[inline]
-    pub fn remove<Q: Ord>(&mut self, key: &Q) -> Option<V> where K: Clone + Borrow<Q> {
+    pub fn remove<Q: Ord>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Clone + Borrow<Q>,
+    {
         self.remove_key_value(key).map(|(_, val)| val)
     }
 
     /// Removes the first key and value as long as the map isn't empty
     #[inline]
-    pub fn pop_first(&mut self) -> Option<(K, V)> where K: Clone {
+    pub fn pop_first(&mut self) -> Option<(K, V)>
+    where
+        K: Clone,
+    {
         self.first_leaf().map(|mut node| unsafe {
             let (key, val) = node.as_mut().remove_val(0);
             self.post_removal(node);
@@ -200,7 +210,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Removes the last key and value as long as the map isn't empty
     #[inline]
-    pub fn pop_last(&mut self) -> Option<(K, V)> where K: Clone {
+    pub fn pop_last(&mut self) -> Option<(K, V)>
+    where
+        K: Clone,
+    {
         self.last_leaf().map(|mut node| unsafe {
             let idx = node.as_ref().len - 1;
             let (key, val) = node.as_mut().remove_val(idx);
@@ -213,7 +226,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     #[inline]
     pub fn clear(&mut self) {
         if let Some(root) = self.root.take() {
-            unsafe { drop_node_ptr(root, self.height, &mut |n| self.store.dealloc(n)); }
+            unsafe {
+                drop_node_ptr(root, self.height, &mut |n| self.store.dealloc(n));
+            }
         }
         self.length = 0;
     }
@@ -226,7 +241,14 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// Also, if the function `panic`s we always remove the key, so this is effectively a
     /// special-case of `replace_with` for the map.
     #[inline]
-    pub fn update_and_return<R>(&mut self, key: K, update: impl FnOnce(Option<V>) -> (Option<V>, R)) -> R where K: Clone + Ord {
+    pub fn update_and_return<R>(
+        &mut self,
+        key: K,
+        update: impl FnOnce(Option<V>) -> (Option<V>, R),
+    ) -> R
+    where
+        K: Clone + Ord,
+    {
         match self.find(&key) {
             Find::NoRoot => match update(None) {
                 (None, r) => r,
@@ -234,7 +256,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     self.insert_root(key, val);
                     r
                 }
-            }
+            },
             Find::At { mut node, idx } => unsafe {
                 match catch_unwind(AssertUnwindSafe(|| {
                     let val = node.as_mut().read_val(idx);
@@ -251,11 +273,11 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         forget(value);
                         self.post_removal(node);
                         r
-                    },
+                    }
                     Ok((Some(val), r)) => {
                         node.as_mut().write_val(idx, val);
                         r
-                    },
+                    }
                 }
             },
             Find::Before { node, idx } => match update(None) {
@@ -263,8 +285,8 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 (Some(val), r) => unsafe {
                     self.insert_before(key, val, node, idx);
                     r
-                }
-            }
+                },
+            },
         }
     }
 
@@ -274,7 +296,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// Also, if the function `panic`s we always remove the key, so this is effectively a
     /// special-case of `replace_with` for the map.
     #[inline]
-    pub fn update(&mut self, key: K, update: impl FnOnce(Option<V>) -> Option<V>) where K: Clone + Ord {
+    pub fn update(&mut self, key: K, update: impl FnOnce(Option<V>) -> Option<V>)
+    where
+        K: Clone + Ord,
+    {
         self.update_and_return(key, |val| (update(val), ()))
     }
 
@@ -283,28 +308,42 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     ///
     /// Ideally, this should always be a no-op.
     #[inline]
-    pub fn validate(&self) where K: Debug + Ord, V: Debug {
+    pub fn validate(&self)
+    where
+        K: Debug + Ord,
+        V: Debug,
+    {
         unsafe fn validate_node<K: Debug + Ord, V: Debug>(
             errors: &mut Vec<String>,
             node: NodePtr<K, V>,
             parent: Option<(NodePtr<K, V>, u16)>,
             height: usize,
-            (mut prev_key, mut prev_leaf): (Option<NonNull<K>>, Option<NodePtr<K, V>>)
+            (mut prev_key, mut prev_leaf): (Option<NonNull<K>>, Option<NodePtr<K, V>>),
         ) -> (usize, (NonNull<K>, NodePtr<K, V>)) {
             let errors = RefCell::new(errors);
-            let assert2 = |node: NodePtr<K, V>, cond: bool, msg: &str| if !cond {
-                (*errors.borrow_mut()).push(format!("{:X?} {}", node.as_ptr(), msg))
+            let assert2 = |node: NodePtr<K, V>, cond: bool, msg: &str| {
+                if !cond {
+                    (*errors.borrow_mut()).push(format!("{:X?} {}", node.as_ptr(), msg))
+                }
             };
-            let assert = |cond: bool, msg: &str| if !cond {
-                assert2(node, cond, msg)
+            let assert = |cond: bool, msg: &str| {
+                if !cond {
+                    assert2(node, cond, msg)
+                }
             };
 
             let is_leaf = height == 0;
             let node_ptr = node;
             let node = node.as_ref();
 
-            assert(node.parent().map(|p| p.0).ptr_eq(&parent.map(|p| p.0)), "parent pointer is incorrect");
-            assert(node.parent().map(|p| p.1).ptr_eq(&parent.map(|p| p.1)), "parent index is incorrect");
+            assert(
+                node.parent().map(|p| p.0).ptr_eq(&parent.map(|p| p.0)),
+                "parent pointer is incorrect",
+            );
+            assert(
+                node.parent().map(|p| p.1).ptr_eq(&parent.map(|p| p.1)),
+                "parent index is incorrect",
+            );
 
             let min_len = match parent {
                 None => 1,
@@ -321,10 +360,13 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
                     if let Some(prev_key) = prev_key {
                         let prev_key = prev_key.as_ref();
-                        assert(match i {
-                            0 => key >= prev_key,
-                            _ => key > prev_key
-                        }, &format!("key {} is out of order", i));
+                        assert(
+                            match i {
+                                0 => key >= prev_key,
+                                _ => key > prev_key,
+                            },
+                            &format!("key {} is out of order", i),
+                        );
                     }
 
                     prev_key = Some(NonNull::from(key));
@@ -354,7 +396,11 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                             assert2(
                                 prev_leaf_ptr,
                                 prev_leaf.next().ptr_eq(&Some(child)),
-                                &format!("next leaf is incorrect (expected {:X?} got {:X?})", child.as_ptr(), as_nullable_ptr(prev_leaf.next()))
+                                &format!(
+                                    "next leaf is incorrect (expected {:X?} got {:X?})",
+                                    child.as_ptr(),
+                                    as_nullable_ptr(prev_leaf.next())
+                                ),
                             )
                         }
                     }
@@ -364,7 +410,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         child,
                         Some((node_ptr, i)),
                         height - 1,
-                        (prev_key, prev_leaf)
+                        (prev_key, prev_leaf),
                     );
                     len += child_len;
                     prev_key = Some(last_key);
@@ -375,14 +421,15 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
         }
         let mut errors = Vec::new();
         if let Some(root) = self.root {
-            let (len, (_last_key, last_leaf)) = unsafe {
-                validate_node(&mut errors, root, None, self.height, (None, None))
-            };
+            let (len, (_last_key, last_leaf)) =
+                unsafe { validate_node(&mut errors, root, None, self.height, (None, None)) };
             if len != self.length {
                 errors.push(String::from("tree length isn't correct"))
             };
             if !unsafe { last_leaf.as_ref().next() }.ptr_eq(&None) {
-                errors.push(format!("{:X?} next leaf is incorrect", unsafe { last_leaf.as_ptr() }))
+                errors.push(format!("{:X?} next leaf is incorrect", unsafe {
+                    last_leaf.as_ptr()
+                }))
             }
         }
         if !errors.is_empty() {
@@ -392,7 +439,11 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Prints the b-tree in ascii
     #[inline]
-    pub fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result where K: Debug, V: Debug {
+    pub fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result
+    where
+        K: Debug,
+        V: Debug,
+    {
         unsafe fn print_node<K: Debug, V: Debug>(
             f: &mut Formatter<'_>,
             node: NodePtr<K, V>,
@@ -405,18 +456,28 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             let indent = "│ ".repeat(max_height - height);
             write!(f, "{}• {:X?}, parent = ", indent, node_ptr.as_ptr())?;
             match node.parent() {
-                Some((parent, parent_idx)) => write!(f, "({:X?}, {})", parent.as_ptr(), parent_idx)?,
+                Some((parent, parent_idx)) => {
+                    write!(f, "({:X?}, {})", parent.as_ptr(), parent_idx)?
+                }
                 None => write!(f, "None")?,
             }
             if is_leaf {
-                writeln!(f, ", prev = {:X?}, next = {:X?}", as_nullable_ptr(node.prev()), as_nullable_ptr(node.next()))?;
+                writeln!(
+                    f,
+                    ", prev = {:X?}, next = {:X?}",
+                    as_nullable_ptr(node.prev()),
+                    as_nullable_ptr(node.next())
+                )?;
                 for i in 0..node.len {
-                    let bullet = if i == node.len - 1 {
-                        "└"
-                    } else {
-                        "├"
-                    };
-                    writeln!(f, "{}{} {:?} = {:?}", indent, bullet, node.key(i), node.val(i))?;
+                    let bullet = if i == node.len - 1 { "└" } else { "├" };
+                    writeln!(
+                        f,
+                        "{}{} {:?} = {:?}",
+                        indent,
+                        bullet,
+                        node.key(i),
+                        node.val(i)
+                    )?;
                 }
             } else {
                 writeln!(f)?;
@@ -454,57 +515,69 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
         IterMut::new(self)
     }
 
-    /// Destroys and iterates over the map's key-value pairs.
-    #[inline]
-    pub fn into_iter(self) -> IntoIter<'store, K, V> {
-        IntoIter::new(self)
-    }
-
     /// Iterates over the map's keys in order.
     #[inline]
-    pub fn keys(&self) -> impl Iterator<Item=&K> + '_ {
+    pub fn keys(&self) -> impl Iterator<Item = &K> + '_ {
         self.iter().map(|(k, _)| k)
     }
 
     /// Iterates over the map's values in order.
     #[inline]
-    pub fn values(&self) -> impl Iterator<Item=&V> + '_ {
+    pub fn values(&self) -> impl Iterator<Item = &V> + '_ {
         self.iter().map(|(_, v)| v)
     }
 
     /// Iterates over the map's values in order. Values are mutable
     #[inline]
-    pub fn values_mut(&mut self) -> impl Iterator<Item=&mut V> + '_ {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> + '_ {
         self.iter_mut().map(|(_, v)| v)
     }
 
     /// Iterates over the map's key-value pairs in order, within the given range.
     #[inline]
-    pub fn range<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Range<'_, K, V> where K: Borrow<Q> {
+    pub fn range<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Range<'_, K, V>
+    where
+        K: Borrow<Q>,
+    {
         Range::new(self, bounds)
     }
 
     /// Iterates over the map's key-value pairs in order, within the given range.. Values are mutable
     #[inline]
-    pub fn range_mut<Q: Ord>(&mut self, bounds: impl RangeBounds<Q>) -> RangeMut<'_, K, V> where K: Borrow<Q> {
+    pub fn range_mut<Q: Ord>(&mut self, bounds: impl RangeBounds<Q>) -> RangeMut<'_, K, V>
+    where
+        K: Borrow<Q>,
+    {
         RangeMut::new(self, bounds)
     }
 
     /// Iterates over the map's keys in order, within the given range.
     #[inline]
-    pub fn range_keys<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item=&K> + '_ where K: Borrow<Q> {
+    pub fn range_keys<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item = &K> + '_
+    where
+        K: Borrow<Q>,
+    {
         self.range(bounds).map(|(k, _)| k)
     }
 
     /// Iterates over the map's values in order, within the given range.
     #[inline]
-    pub fn range_values<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item=&V> + '_ where K: Borrow<Q> {
+    pub fn range_values<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item = &V> + '_
+    where
+        K: Borrow<Q>,
+    {
         self.range(bounds).map(|(_, v)| v)
     }
 
     /// Iterates over the map's values in order, within the given range. Values are mutable
     #[inline]
-    pub fn range_values_mut<Q: Ord>(&mut self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item=&mut V> + '_ where K: Borrow<Q> {
+    pub fn range_values_mut<Q: Ord>(
+        &mut self,
+        bounds: impl RangeBounds<Q>,
+    ) -> impl Iterator<Item = &mut V> + '_
+    where
+        K: Borrow<Q>,
+    {
         self.range_mut(bounds).map(|(_, v)| v)
     }
 
@@ -565,7 +638,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     }
 
     #[inline]
-    fn find<Q: Ord>(&self, key: &Q) -> Find<K, V> where K: Borrow<Q> {
+    fn find<Q: Ord>(&self, key: &Q) -> Find<K, V>
+    where
+        K: Borrow<Q>,
+    {
         let Some(mut node) = self.root else {
             return Find::NoRoot
         };
@@ -579,7 +655,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                     }
                     height -= 1;
                     node = unsafe { node.as_ref().edge(idx + 1) }
-                },
+                }
                 Err(idx) => {
                     let idx = idx as u16;
                     if height == 0 {
@@ -593,20 +669,23 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     }
 
     #[inline]
-    fn node_bounds<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Option<NodeBounds<K, V>> where K: Borrow<Q> {
+    fn node_bounds<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Option<NodeBounds<K, V>>
+    where
+        K: Borrow<Q>,
+    {
         let (start_node, start_index) = match bounds.start_bound() {
             Bound::Included(bound) => match self.find(bound) {
                 Find::NoRoot => return None,
                 Find::Before { node, idx } => unsafe { normalize_address(node, idx) }?,
-                Find::At { node, idx } => (node, idx)
-            }
+                Find::At { node, idx } => (node, idx),
+            },
             Bound::Excluded(bound) => match self.find(bound) {
                 Find::NoRoot => return None,
                 // normalize_address handles if idx == len, which means we are past this node and
                 // may be at the end.
                 Find::Before { node, idx } => unsafe { normalize_address(node, idx) }?,
                 Find::At { node, idx } => unsafe { address_after(node, idx) }?,
-            }
+            },
             Bound::Unbounded => (self.first_leaf()?, 0),
         };
         let (end_node, end_index) = match bounds.end_bound() {
@@ -614,21 +693,23 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 Find::NoRoot => return None,
                 Find::Before { node, idx } => unsafe { address_before(node, idx) }?,
                 Find::At { node, idx } => (node, idx),
-            }
+            },
             Bound::Excluded(bound) => match self.find(bound) {
                 Find::NoRoot => return None,
-                Find::Before { node, idx } |
-                Find::At { node, idx } => unsafe { address_before(node, idx) }?,
-            }
-            Bound::Unbounded => self.last_leaf().map(|leaf| unsafe {
-                (leaf, leaf.as_ref().len - 1)
-            })?,
+                Find::Before { node, idx } | Find::At { node, idx } => {
+                    unsafe { address_before(node, idx) }?
+                }
+            },
+            Bound::Unbounded => self
+                .last_leaf()
+                .map(|leaf| unsafe { (leaf, leaf.as_ref().len - 1) })?,
         };
 
         // Check for overlap (only need to check if address_after(start) == end)
-        if (start_node.ptr_eq(&end_node) && start_index == end_index + 1) ||
-            (start_index == 0 && unsafe { start_node.as_ref().prev() }.ptr_eq(&Some(end_node))) {
-            return None
+        if (start_node.ptr_eq(&end_node) && start_index == end_index + 1)
+            || (start_index == 0 && unsafe { start_node.as_ref().prev() }.ptr_eq(&Some(end_node)))
+        {
+            return None;
         }
 
         // Actually create
@@ -644,13 +725,18 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     fn insert_root(&mut self, key: K, val: V) {
         debug_assert_eq!(self.length, 0);
         let mut root = Node::leaf();
-        unsafe { root.insert_val(0, key, val); }
+        unsafe {
+            root.insert_val(0, key, val);
+        }
         self.root = Some(self.store.alloc(root));
         self.length += 1;
     }
 
     #[inline]
-    unsafe fn insert_before(&mut self, mut key: K, val: V, mut node: NodePtr<K, V>, idx: u16) where K: Clone {
+    unsafe fn insert_before(&mut self, mut key: K, val: V, mut node: NodePtr<K, V>, idx: u16)
+    where
+        K: Clone,
+    {
         if (node.as_ref().len as usize) < M {
             node.as_mut().insert_val(idx, key, val);
         } else {
@@ -659,7 +745,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             // First split
             // `key` gets replaced with the "split" (median) key, and `node` gets replaced with the
             // left node
-            let mut right = self.store.alloc(node.as_mut().split_leaf(idx, &mut key, val));
+            let mut right = self
+                .store
+                .alloc(node.as_mut().split_leaf(idx, &mut key, val));
             node.as_mut().set_next(Some(right));
             right.as_mut().set_prev(Some(node));
             if let Some(mut right_next) = right.as_ref().next() {
@@ -690,7 +778,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 if (parent.as_ref().len as usize) < M {
                     // The parent won't overflow, actually insert into parent
                     parent.as_mut().insert_edge(idx, true, key, right);
-                    break
+                    break;
                 }
                 // The parent will overflow too, so we split the parent when inserting idx/key/right
                 // split_internal will replace key with the split key and node with the left node,
@@ -699,7 +787,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 // node in its parent, and so on, until we either find a suitable parent or reach
                 // the root.
                 node = parent;
-                right = self.store.alloc(node.as_mut().split_internal(idx, &mut key, right));
+                right = self
+                    .store
+                    .alloc(node.as_mut().split_internal(idx, &mut key, right));
                 for right_child in right.as_mut().edges_mut() {
                     right_child.as_mut().parent = Some(right);
                 }
@@ -709,7 +799,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     }
 
     #[inline]
-    unsafe fn post_removal(&mut self, mut node: NodePtr<K, V>) where K: Clone {
+    unsafe fn post_removal(&mut self, mut node: NodePtr<K, V>)
+    where
+        K: Clone,
+    {
         self.length -= 1;
 
         // Rebalance (underflow)
@@ -748,7 +841,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         edge.as_mut().set_parent(node, 0);
                         node.as_mut().insert_edge(0, false, key, edge);
                     }
-                    break
+                    break;
                 }
             }
 
@@ -757,7 +850,9 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 let mut next = parent.as_ref().edge(idx + 1);
                 if (next.as_ref().len as usize) > M / 2 {
                     if is_leaf {
-                        parent.as_mut().replace_key(idx, next.as_ref().key(1).clone());
+                        parent
+                            .as_mut()
+                            .replace_key(idx, next.as_ref().key(1).clone());
                         let (key, val) = next.as_mut().remove_val(0);
                         node.as_mut().insert_val(node.as_ref().len, key, val);
                     } else {
@@ -767,7 +862,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                         edge.as_mut().set_parent(node, len + 1);
                         node.as_mut().insert_edge(len, true, key, edge);
                     }
-                    break
+                    break;
                 }
             }
 
@@ -848,7 +943,7 @@ impl<'store, K, V> Drop for BTreeMap<'store, K, V> {
     fn drop(&mut self) {
         if panicking() {
             // TODO: Drop when panicking without causing UB (need to reorder some operations)
-            return
+            return;
         }
 
         if let Some(root) = self.root.take() {
@@ -860,7 +955,7 @@ impl<'store, K, V> Drop for BTreeMap<'store, K, V> {
 unsafe fn drop_node_ptr<K, V>(
     mut node: NodePtr<K, V>,
     height: usize,
-    dealloc: &mut impl FnMut(NodePtr<K, V>)
+    dealloc: &mut impl FnMut(NodePtr<K, V>),
 ) {
     let node_ref = node.as_mut();
 
@@ -886,7 +981,7 @@ unsafe fn drop_node_ptr<K, V>(
 /// Doesn't drop any of the nodes' contents
 unsafe fn dealloc_up_firsts<K, V>(
     mut address: (NodePtr<K, V>, u16),
-    mut dealloc: impl FnMut(NodePtr<K, V>)
+    mut dealloc: impl FnMut(NodePtr<K, V>),
 ) {
     loop {
         let (node, idx) = address;
@@ -896,7 +991,7 @@ unsafe fn dealloc_up_firsts<K, V>(
             "sanity check failed: address.idx > address.node.len (invariant broke BEFORE this call)"
         );
         if idx != 0 {
-            break
+            break;
         }
 
         let parent = node.as_ref().parent();
@@ -916,14 +1011,14 @@ unsafe fn dealloc_up_firsts<K, V>(
 #[inline]
 unsafe fn dealloc_up_lasts<K, V>(
     (mut node, mut idx): (NodePtr<K, V>, u16),
-    mut dealloc: impl FnMut(NodePtr<K, V>)
+    mut dealloc: impl FnMut(NodePtr<K, V>),
 ) {
     debug_assert!(
         idx < node.as_ref().len,
         "sanity check failed: address.idx >= address.node.len (invariant broke BEFORE this call)"
     );
     if idx != node.as_ref().len - 1 {
-        return
+        return;
     }
 
     while let Some(parent) = {
@@ -939,7 +1034,7 @@ unsafe fn dealloc_up_lasts<K, V>(
             "sanity check failed: address.idx > address.node.len (invariant broke BEFORE this call)"
         );
         if idx != node.as_ref().len {
-            break
+            break;
         }
     }
 }
@@ -966,13 +1061,13 @@ impl<'store: 'a, 'a, K, V> IntoIterator for &'a mut BTreeMap<'store, K, V> {
     }
 }
 
-impl<'a, K, V> IntoIterator for BTreeMap<'a, K, V> {
+impl<'store, K, V> IntoIterator for BTreeMap<'store, K, V> {
     type Item = (K, V);
-    type IntoIter = IntoIter<'a, K, V>;
+    type IntoIter = IntoIter<'store, K, V>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        self.into_iter()
+        IntoIter::new(self)
     }
 }
 // endregion
@@ -983,7 +1078,7 @@ pub struct Iter<'a, K, V> {
     cursor: Cursor<'a, K, V>,
     back_cursor: Cursor<'a, K, V>,
     length: usize,
-    _p: PhantomData<(&'a K, &'a V)>
+    _p: PhantomData<(&'a K, &'a V)>,
 }
 
 //noinspection DuplicatedCode
@@ -1097,7 +1192,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
     #[inline]
     pub fn peek(&self) -> Option<(&'a K, &'a V)> {
         if self.length == 0 {
-            return None
+            return None;
         }
         self.cursor.key_value()
     }
@@ -1106,7 +1201,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
     #[inline]
     pub fn peek_back(&self) -> Option<(&'a K, &'a V)> {
         if self.length == 0 {
-            return None
+            return None;
         }
         self.back_cursor.key_value()
     }
@@ -1115,7 +1210,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
     #[inline]
     pub fn peek_mut(&mut self) -> Option<(&'a K, &'a mut V)> {
         if self.length == 0 {
-            return None
+            return None;
         }
         unsafe { self.cursor.key_value_mut() }
     }
@@ -1124,7 +1219,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
     #[inline]
     pub fn peek_back_mut(&mut self) -> Option<(&'a K, &'a mut V)> {
         if self.length == 0 {
-            return None
+            return None;
         }
         unsafe { self.back_cursor.key_value_mut() }
     }
@@ -1217,7 +1312,7 @@ impl<'store, K, V> Iterator for IntoIter<'store, K, V> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.length == 0 {
-            return None
+            return None;
         }
         unsafe {
             let key_value = self.cursor.read_key_value().unwrap();
@@ -1238,7 +1333,7 @@ impl<'a, K, V> DoubleEndedIterator for IntoIter<'a, K, V> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.length == 0 {
-            return None
+            return None;
         }
         unsafe {
             let key_value = self.back_cursor.read_key_value().unwrap();
@@ -1272,23 +1367,22 @@ pub struct Range<'a, K, V> {
 //noinspection DuplicatedCode
 impl<'a, K, V> Range<'a, K, V> {
     #[inline]
-    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self where K: Borrow<Q> {
+    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
+    where
+        K: Borrow<Q>,
+    {
         let bounds = tree.node_bounds(bounds);
         let cursor = match bounds.as_ref().map(|b| b.start()) {
             None => Cursor::new_detached(),
-            Some((start_node, start_idx)) => unsafe {
-                Cursor::new(Some(start_node), start_idx)
-            },
+            Some((start_node, start_idx)) => unsafe { Cursor::new(Some(start_node), start_idx) },
         };
         let back_cursor = match bounds.as_ref().map(|b| b.end()) {
             None => Cursor::new_detached(),
-            Some((end_node, end_idx)) => unsafe {
-                Cursor::new(Some(end_node), end_idx)
-            },
+            Some((end_node, end_idx)) => unsafe { Cursor::new(Some(end_node), end_idx) },
         };
         let bounds = match bounds {
             None => MaybeUninit::uninit(),
-            Some(bounds) => MaybeUninit::new(bounds)
+            Some(bounds) => MaybeUninit::new(bounds),
         };
         Self {
             cursor,
@@ -1316,7 +1410,11 @@ impl<'a, K, V> Range<'a, K, V> {
         self.cursor.advance();
         if !self.cursor.is_attached() {
             self.back_cursor.detach();
-        } else if self.cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end())) {
+        } else if self
+            .cursor
+            .address()
+            .ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end()))
+        {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1328,7 +1426,11 @@ impl<'a, K, V> Range<'a, K, V> {
         self.back_cursor.advance_back();
         if !self.back_cursor.is_attached() {
             self.cursor.detach();
-        } else if self.back_cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start())) {
+        } else if self
+            .back_cursor
+            .address()
+            .ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start()))
+        {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1370,23 +1472,22 @@ pub struct RangeMut<'a, K, V> {
 //noinspection DuplicatedCode
 impl<'a, K, V> RangeMut<'a, K, V> {
     #[inline]
-    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self where K: Borrow<Q> {
+    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
+    where
+        K: Borrow<Q>,
+    {
         let bounds = tree.node_bounds(bounds);
         let cursor = match bounds.as_ref().map(|b| b.start()) {
             None => Cursor::new_detached(),
-            Some((start_node, start_idx)) => unsafe {
-                Cursor::new(Some(start_node), start_idx)
-            },
+            Some((start_node, start_idx)) => unsafe { Cursor::new(Some(start_node), start_idx) },
         };
         let back_cursor = match bounds.as_ref().map(|b| b.end()) {
             None => Cursor::new_detached(),
-            Some((end_node, end_idx)) => unsafe {
-                Cursor::new(Some(end_node), end_idx)
-            },
+            Some((end_node, end_idx)) => unsafe { Cursor::new(Some(end_node), end_idx) },
         };
         let bounds = match bounds {
             None => MaybeUninit::uninit(),
-            Some(bounds) => MaybeUninit::new(bounds)
+            Some(bounds) => MaybeUninit::new(bounds),
         };
         Self {
             cursor,
@@ -1427,7 +1528,11 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         self.cursor.advance();
         if !self.cursor.is_attached() {
             self.back_cursor.detach();
-        } else if self.cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end())) {
+        } else if self
+            .cursor
+            .address()
+            .ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.end()))
+        {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1439,7 +1544,11 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         self.back_cursor.advance_back();
         if !self.back_cursor.is_attached() {
             self.cursor.detach();
-        } else if self.back_cursor.address().ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start())) {
+        } else if self
+            .back_cursor
+            .address()
+            .ptr_eq(&Some(unsafe { self.bounds.assume_init_ref() }.start()))
+        {
             self.cursor.detach();
             self.back_cursor.detach()
         }
@@ -1473,6 +1582,6 @@ impl<'a, K, V> FusedIterator for RangeMut<'a, K, V> {}
 unsafe fn as_nullable_ptr<K, V>(ptr: Option<NodePtr<K, V>>) -> *const Node<K, V> {
     match ptr {
         Some(ptr) => ptr.as_ptr().as_ptr(),
-        None => std::ptr::null()
+        None => std::ptr::null(),
     }
 }

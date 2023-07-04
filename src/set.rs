@@ -1,6 +1,6 @@
+use crate::{BTreeMap, BTreeStore};
 use std::borrow::Borrow;
 use std::ops::RangeBounds;
-use crate::{BTreeMap, BTreeStore};
 
 /// A b-tree set.
 ///
@@ -46,31 +46,46 @@ impl<'store, T> BTreeSet<'store, T> {
 
     /// Returns `true` if the set contains a value.
     #[inline]
-    pub fn contains<U: Ord>(&self, value: &U) -> bool where T: Borrow<U> {
+    pub fn contains<U: Ord>(&self, value: &U) -> bool
+    where
+        T: Borrow<U>,
+    {
         self.0.contains_key(value)
     }
 
     /// Inserts a value into the set. Returns `true` if the value was not already present.
     #[inline]
-    pub fn insert(&mut self, value: T) -> bool where T: Clone + Ord {
+    pub fn insert(&mut self, value: T) -> bool
+    where
+        T: Clone + Ord,
+    {
         self.0.insert(value, ()).is_none()
     }
 
     /// Removes a value from the set. Returns `true` if the value was present.
     #[inline]
-    pub fn remove<U: Ord>(&mut self, value: &U) -> bool where T: Borrow<U> + Clone {
+    pub fn remove<U: Ord>(&mut self, value: &U) -> bool
+    where
+        T: Borrow<U> + Clone,
+    {
         self.0.remove(value).is_some()
     }
 
     /// Removes the first value from the set.
     #[inline]
-    pub fn pop_first(&mut self) -> Option<T> where T: Clone {
+    pub fn pop_first(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
         self.0.pop_first().map(|(k, ())| k)
     }
 
     /// Removes the last value from the set.
     #[inline]
-    pub fn pop_last(&mut self) -> Option<T> where T: Clone {
+    pub fn pop_last(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
         self.0.pop_last().map(|(k, ())| k)
     }
 
@@ -80,15 +95,12 @@ impl<'store, T> BTreeSet<'store, T> {
         Iter(self.0.iter())
     }
 
-    /// Destroys the set and returns an iterator over its elements.
-    #[inline]
-    pub fn into_iter(self) -> IntoIter<'store, T> {
-        IntoIter(self.0.into_iter())
-    }
-
     /// Returns an iterator over the set within the given bounds
     #[inline]
-    pub fn range<U: Ord>(&self, bounds: impl RangeBounds<U>) -> Range<T> where T: Borrow<U> {
+    pub fn range<U: Ord>(&self, bounds: impl RangeBounds<U>) -> Range<T>
+    where
+        T: Borrow<U>,
+    {
         Range(self.0.range(bounds))
     }
 }
@@ -99,7 +111,7 @@ impl<'store, T> IntoIterator for BTreeSet<'store, T> {
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        self.into_iter()
+        IntoIter(self.0.into_iter())
     }
 }
 
