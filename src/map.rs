@@ -208,6 +208,15 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
             (key, val)
         })
     }
+
+    /// Clears the map, removing all key-value pairs.
+    #[inline]
+    pub fn clear(&mut self) {
+        if let Some(root) = self.root.take() {
+            unsafe { drop_node_ptr(root, self.height, &mut |n| self.store.dealloc(n)); }
+        }
+        self.length = 0;
+    }
     // endregion
 
     // region advanced

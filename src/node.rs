@@ -7,7 +7,7 @@ use rustc_arena_modified::slab_arena::UnsafeRef;
 use crate::utils::{maybe_uninit_array, PtrEq};
 
 /// \# of keys and values in a leaf node
-pub const M: usize = 6;
+pub const M: usize = 8;
 
 /// A node in the b+tree. This can be either leaf node or internal node depending on the implicit
 /// height.

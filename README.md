@@ -32,14 +32,15 @@ fn main() {
   foo_bars.insert("baz");
   foo_bars.insert("qux");
   alphabeticals.insert("xyz");
-  foo_bars.remove("baz");
-  alphabeticals.remove("def");
+  foo_bars.remove(&"baz");
+  alphabeticals.remove(&"def");
   for elem in &foo_bars {
       println!("Iterate {}", elem);
   }
-  for elem in alphabeticals.drain_filter(|a| a.starts_with('a')) {
-      println!("Drain {}", elem);
-  }
+  // TODO: retain, drain_filter, intersect, union, difference, and symmetric_difference
+  // for elem in alphabeticals.drain_filter(|a| a.starts_with('a')) {
+  //     println!("Drain {}", elem);
+  // }
   for elem in alphabeticals {
       println!("Consume {}", elem)
   }
