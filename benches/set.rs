@@ -1,7 +1,7 @@
 extern crate rand;
 
 use std::collections::BTreeSet as StdBTreeSet;
-use btree_forest_arena::{BTreeStore, BTreeSet as MyBTreeSet};
+use btree_plus_store::{BTreeStore, BTreeSet as MyBTreeSet};
 
 use rand::{Rng, rngs::SmallRng, SeedableRng};
 
@@ -108,8 +108,8 @@ impl<'store, T: Ord + 'store> BTreeSet<'store, T> for StdBTreeSet<T> {
 
 impl<'store, T: Clone + Ord + 'store> BTreeSet<'store, T> for MyBTreeSet<'store, T> {
     type SharedStore = BTreeStore<T, ()>;
-    type Iter<'a> = btree_forest_arena::set::Iter<'a, T> where 'store: 'a;
-    type Range<'a> = btree_forest_arena::set::Range<'a, T> where 'store: 'a;
+    type Iter<'a> = btree_plus_store::set::Iter<'a, T> where 'store: 'a;
+    type Range<'a> = btree_plus_store::set::Range<'a, T> where 'store: 'a;
 
     fn new_in(store: &'store Self::SharedStore) -> Self {
         Self::new_in(store)

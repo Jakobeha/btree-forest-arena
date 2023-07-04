@@ -64,7 +64,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     /// # Examples
     ///
     /// ```
-    /// use btree_forest_arena::{BTreeMap, BTreeStore};
+    /// use btree_plus_store::{BTreeMap, BTreeStore};
     /// let store = BTreeStore::<&str, i32>::new();
     /// let mut map = BTreeMap::new_in(&store);
     /// ```

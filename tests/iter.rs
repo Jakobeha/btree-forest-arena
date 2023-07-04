@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc};
 use std::fmt::{Debug, Formatter};
-use btree_forest_arena::{BTreeMap, BTreeStore};
+use btree_plus_store::{BTreeMap, BTreeStore};
 
 #[test]
 pub fn iter() {

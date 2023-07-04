@@ -1,4 +1,4 @@
-use btree_forest_arena::{BTreeMap, BTreeStore};
+use btree_plus_store::{BTreeMap, BTreeStore};
 
 #[test]
 fn shared_between_2() {

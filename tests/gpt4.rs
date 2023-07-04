@@ -4,7 +4,7 @@ use std::thread;
 
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
-use btree_forest_arena::{BTreeMap, BTreeSet, BTreeStore};
+use btree_plus_store::{BTreeMap, BTreeSet, BTreeStore};
 
 use btree_store::concurrent_shareable_slab::{BTreeMap, BTreeSet, Store};
 

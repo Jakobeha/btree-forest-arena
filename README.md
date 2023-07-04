@@ -1,7 +1,7 @@
 # btree-plus-store: B-trees backed by a slab/arena to reduce allocations and increase locality
 
 [![CI](https://github.com/Jakobeha/btree-plus-store/workflows/CI/badge.svg)](https://github.com/Jakobeha/btree-plus-store/actions)
-[![Crate informations](https://img.shields.io/crates/v/btree-plus-store.svg?style=flat-square)](https://crates.io/crates/btree-plus-store)
+[![Crate information](https://img.shields.io/crates/v/btree-plus-store.svg?style=flat-square)](https://crates.io/crates/btree-plus-store)
 [![License](https://img.shields.io/crates/l/btree-plus-store.svg?style=flat-square)](https://github.com/Jakobeha/btree-plus-store#license)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/btree-plus-store)
 
@@ -15,10 +15,10 @@ You have many b-trees, some of which are very tiny, and want to reduce allocatio
 
 `BTreeMap` and `BTreeSet` with an interface almost identical to standard library (with some additional features), but constructed via `new_in(&'a BTreeStore)`.
 
-`BTreeStore` is internally an arena which maintains a linked list in the allocated but discarded nodes like a slab. This means we can reuse nodes by dropped b-trees, although the memory won't get reclaimed until the arena is destroyed.
+`BTreeStore` is internally an [arena allocator](https://en.wikipedia.org/wiki/Region-based_memory_management), in that it allocates nodes in large fixed-sized regions; but it's also a [slab allocator](https://en.wikipedia.org/wiki/Slab_allocation), in that it maintains a linked list of allocated and discarded nodes. This means we get the locality benefits of arena allocation but can also reuse storage by dropped b-trees in new b-trees, although the memory won't get reclaimed (usable outside of b-trees) until the arena is destroyed.
 
 ```rust
-use btree_forest_arena::{BTreeSet, BTreeStore};
+use btree_plus_store::{BTreeSet, BTreeStore};
 
 fn main() {
   let store = BTreeStore::new();
@@ -49,7 +49,7 @@ fn main() {
 
 ## Safety
 
-This library makes heavy use of `unsafe` and is only partially tested with MIRI. There are tests for various operations, but it's still in the early phases.
+This library makes heavy use of `unsafe` and is not fully tested with MIRI. There are tests for most operations and edge cases, but it's still in the early phases and shouldn't be used in production.
 
 ## Benchmarks
 
