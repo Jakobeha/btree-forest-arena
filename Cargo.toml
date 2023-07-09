@@ -1,6 +1,6 @@
 [package]
 name = "btree-plus-store"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Jakob Hain <jakobeha@fastmail.com>", "Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2021"
 categories = ["data-structures", "memory-management"]
