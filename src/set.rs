@@ -53,6 +53,17 @@ impl<'store, T> BTreeSet<'store, T> {
         self.0.contains_key(value)
     }
 
+    /// Returns a reference to the equivalent value in the set, if any.
+    ///
+    /// This is (only) useful when `U` is a different type than `T`.
+    #[inline]
+    pub fn get<U: Ord>(&self, value: &U) -> Option<&T>
+    where
+        T: Borrow<U>,
+    {
+        self.0.get_key(value)
+    }
+
     /// Inserts a value into the set. Returns `true` if the value was not already present.
     #[inline]
     pub fn insert(&mut self, value: T) -> bool

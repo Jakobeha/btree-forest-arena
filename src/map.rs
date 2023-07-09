@@ -121,6 +121,48 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
         }
     }
 
+    /// Returns a reference to the equivalent key
+    ///
+    /// This is (only) useful when `Q` is a different type than `K`.
+    #[inline]
+    pub fn get_key<Q: Ord>(&self, key: &Q) -> Option<&K>
+    where
+        K: Borrow<Q>,
+    {
+        match self.find(key) {
+            Find::At { node, idx } => unsafe { Some(node.as_ref().key(idx)) },
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the equivalent key and associated value
+    ///
+    /// This is (only) useful when `Q` is a different type than `K`.
+    #[inline]
+    pub fn get_key_value<Q: Ord>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        K: Borrow<Q>,
+    {
+        match self.find(key) {
+            Find::At { node, idx } => unsafe { Some(node.as_ref().key_val(idx)) },
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the equivalent key and mutable associated value
+    ///
+    /// This is (only) useful when `Q` is a different type than `K`.
+    #[inline]
+    pub fn get_key_value_mut<Q: Ord>(&mut self, key: &Q) -> Option<(&K, &mut V)>
+    where
+        K: Borrow<Q>,
+    {
+        match self.find(key) {
+            Find::At { mut node, idx } => unsafe { Some(node.as_mut().key_val_mut(idx)) },
+            _ => None,
+        }
+    }
+
     /// Returns the first key and value
     #[inline]
     pub fn first_key_value(&self) -> Option<(&K, &V)> {
@@ -167,6 +209,27 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
                 None
             },
             Find::At { mut node, idx } => unsafe { Some(node.as_mut().replace_val(idx, val)) },
+        }
+    }
+
+    /// Get a reference to the value at the given key, or insert a new value if the key is not
+    /// present.
+    #[inline]
+    pub fn get_or_insert(&mut self, key: K, val: V) -> &mut V
+    where
+        K: Clone + Ord,
+    {
+        match self.find(&key) {
+            Find::NoRoot => unsafe {
+                self.insert_root(key, val);
+                self.root.unwrap().as_mut().val_mut(0)
+            },
+            Find::Before { node, idx } => unsafe {
+                // Maybe could optimize into a single lookup...
+                self.insert_before(key.clone(), val, node, idx);
+                self.get_mut(&key).unwrap()
+            },
+            Find::At { mut node, idx } => unsafe { node.as_mut().val_mut(idx) },
         }
     }
 
