@@ -27,11 +27,11 @@ harness = true
 
 [features]
 default = []
-dot = []
+copyable = []
 
 [dependencies]
 smallvec = "1.10.0"
-rustc-arena-modified = { version = "0.1.0", features = ["slab"] }
+rustc-arena-modified = { path = "../rustc-arena-modified", version = "0.1.1", features = ["slab"] }
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }

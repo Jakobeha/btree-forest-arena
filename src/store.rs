@@ -3,7 +3,7 @@ use rustc_arena_modified::SlabArena;
 
 /// Arena to store nodes from multiple b-trees.
 pub struct BTreeStore<K, V> {
-    nodes: SlabArena<Node<K, V>>,
+    pub(crate) nodes: SlabArena<Node<K, V>>,
 }
 
 impl<K, V> BTreeStore<K, V> {
@@ -28,6 +28,15 @@ impl<K, V> BTreeStore<K, V> {
     #[inline]
     pub(crate) fn dealloc_and_return(&self, node: NodePtr<K, V>) -> Node<K, V> {
         unsafe { node.take(&self.nodes) }
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub(crate) unsafe fn retain_shared<F>(&self, mut f: F)
+    where
+        F: FnMut(&Node<K, V>) -> bool,
+    {
+        self.nodes.retain_shared(|node| f(node))
     }
 }
 

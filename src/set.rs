@@ -1,5 +1,6 @@
 use crate::{BTreeMap, BTreeStore};
 use std::borrow::Borrow;
+use std::fmt::{Debug, Formatter};
 use std::ops::RangeBounds;
 
 /// A b-tree set.
@@ -100,6 +101,28 @@ impl<'store, T> BTreeSet<'store, T> {
         self.0.pop_last().map(|(k, ())| k)
     }
 
+    /// Validates the set, *panic*ing if it is invalid. Specifically, we check that the number of
+    /// entries in each node is within the b-tree invariant bounds, and that the elements are in
+    /// order.
+    ///
+    /// Ideally, this should always be a no-op.
+    #[inline]
+    pub fn validate(&self)
+    where
+        T: Debug + Ord,
+    {
+        self.0.validate()
+    }
+
+    /// Prints the b-tree in ascii
+    #[inline]
+    pub fn print(&self, f: &mut Formatter<'_>) -> std::fmt::Result
+    where
+        T: Debug,
+    {
+        self.0.print(f)
+    }
+
     /// Returns an iterator over the set.
     #[inline]
     pub fn iter(&self) -> Iter<'_, T> {
@@ -126,6 +149,7 @@ impl<'store, T> IntoIterator for BTreeSet<'store, T> {
     }
 }
 
+//noinspection DuplicatedCode
 impl<'a, 'store: 'a, T> IntoIterator for &'a BTreeSet<'store, T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
@@ -181,5 +205,18 @@ impl<'a, T> Iterator for Range<'a, T> {
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.0.size_hint()
+    }
+}
+
+#[cfg(feature = "copyable")]
+impl<'store, T> crate::copyable::sealed::BTree<'store, T, ()> for BTreeSet<'store, T> {
+    #[inline]
+    fn assert_store(&self, store: &BTreeStore<T, ()>) {
+        self.0.assert_store(store)
+    }
+
+    #[inline]
+    fn nodes(&self) -> crate::copyable::sealed::NodeIter<'store, T, ()> {
+        self.0.nodes()
     }
 }

@@ -1105,6 +1105,7 @@ unsafe fn dealloc_up_lasts<K, V>(
 }
 // endregion
 
+//noinspection DuplicatedCode
 // region iterator impls
 impl<'store: 'a, 'a, K, V> IntoIterator for &'a BTreeMap<'store, K, V> {
     type Item = (&'a K, &'a V);
@@ -1643,6 +1644,23 @@ impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
 impl<'a, K, V> FusedIterator for RangeMut<'a, K, V> {}
 // endregion
 // endregion
+
+#[cfg(feature = "copyable")]
+impl<'store, K, V> crate::copyable::sealed::BTree<'store, K, V> for BTreeMap<'store, K, V> {
+    #[inline]
+    fn assert_store(&self, store: &BTreeStore<K, V>) {
+        assert_eq!(
+            NonNull::from(self.store),
+            NonNull::from(store),
+            "b-tree is not from this store"
+        );
+    }
+
+    #[inline]
+    fn nodes(&self) -> crate::copyable::sealed::NodeIter<'store, K, V> {
+        crate::copyable::sealed::NodeIter::new(self.root, self.height)
+    }
+}
 
 unsafe fn as_nullable_ptr<K, V>(ptr: Option<NodePtr<K, V>>) -> *const Node<K, V> {
     match ptr {
