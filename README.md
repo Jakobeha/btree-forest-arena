@@ -11,7 +11,7 @@ Forked from [btree-slab](https://github.com/timothee-haudebourg/btree-slab).
 
 You have many b-trees, some of which are very tiny, and want to reduce allocations and increase localization by storing them all in the same memory region.
 
-Or you want [immutable b-trees which can be `Copy`d and share the same memory](https://docs.rs/btree-plus-store/copyable), with the trade-off that you must drop and deallocate their memory via a [manually-invoked tracing gc](https://docs.rs/btree-plus-store/copyable/BTreeStoreExt/function.tracing_gc.html).
+Or you want [immutable b-trees which can be `Copy`d and share the same memory](https://docs.rs/btree-plus-store/0.2.0/btree_plus_store/copyable/index.html), with the trade-off that you must drop and deallocate their memory via a [manually-invoked tracing gc](https://docs.rs/btree-plus-store/0.2.0/btree_plus_store/copyable/trait.BTreeStoreExt.html#tymethod.tracing_gc).
 
 ## What is it?
 
