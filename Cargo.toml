@@ -5,7 +5,7 @@ authors = ["Jakob Hain <jakobeha@fastmail.com>", "Timothée Haudebourg <author@h
 edition = "2021"
 categories = ["data-structures", "memory-management"]
 keywords = ["btree", "map", "set", "arena"]
-description = "B-trees backed by a slab/arena to reduce allocations and increase locality"
+description = "B-trees backed by a slab/arena to reduce allocations and increase locality + copyable, immutable B-trees which must be manually dropped"
 repository = "https://github.com/Jakobeha/btree-plus-store"
 documentation = "https://docs.rs/btree-plus-store"
 # Benchmarks are in a separate workspace with criterion (see benches/README.md for more)
@@ -24,6 +24,9 @@ harness = true
 name = "set_benchmarks"
 path = "benches/set.rs"
 harness = true
+
+[package.metadata.docs.rs]
+features = ["copyable"]
 
 [features]
 default = []

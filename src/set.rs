@@ -1,11 +1,14 @@
 use crate::{BTreeMap, BTreeStore};
 use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
+use std::hash::Hash;
 use std::ops::RangeBounds;
 
 /// A b-tree set.
 ///
 /// See [std::collections::BTreeSet] for more info.
+// TODO: impl Clone
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BTreeSet<'store, T>(BTreeMap<'store, T, ()>);
 
 impl<'store, T> BTreeSet<'store, T> {
@@ -139,6 +142,15 @@ impl<'store, T> BTreeSet<'store, T> {
     }
 }
 
+// region common trait impls
+impl<'store, T: Debug> Debug for BTreeSet<'store, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.print(f)
+    }
+}
+// endregion
+
+// region iterators
 impl<'store, T> IntoIterator for BTreeSet<'store, T> {
     type Item = T;
     type IntoIter = IntoIter<'store, T>;
@@ -207,6 +219,7 @@ impl<'a, T> Iterator for Range<'a, T> {
         self.0.size_hint()
     }
 }
+// endregion
 
 #[cfg(feature = "copyable")]
 impl<'store, T> crate::copyable::sealed::BTree<'store, T, ()> for BTreeSet<'store, T> {

@@ -1,7 +1,9 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::Bound;
 use std::fmt::{Debug, Formatter};
+use std::hash::{Hash, Hasher};
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem::{forget, MaybeUninit};
@@ -18,6 +20,7 @@ use crate::BTreeStore;
 /// A b-tree map.
 ///
 /// See [std::collections::BTreeMap] for more info.
+// TODO: impl Clone
 pub struct BTreeMap<'store, K, V> {
     store: &'store BTreeStore<K, V>,
     root: Option<NodePtr<K, V>>,
@@ -582,20 +585,20 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's keys in order.
     #[inline]
-    pub fn keys(&self) -> impl Iterator<Item = &K> + '_ {
-        self.iter().map(|(k, _)| k)
+    pub fn keys(&self) -> Keys<'_, K, V> {
+        Keys(self.iter())
     }
 
     /// Iterates over the map's values in order.
     #[inline]
-    pub fn values(&self) -> impl Iterator<Item = &V> + '_ {
-        self.iter().map(|(_, v)| v)
+    pub fn values(&self) -> Values<'_, K, V> {
+        Values(self.iter())
     }
 
     /// Iterates over the map's values in order. Values are mutable
     #[inline]
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> + '_ {
-        self.iter_mut().map(|(_, v)| v)
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
+        ValuesMut(self.iter_mut())
     }
 
     /// Iterates over the map's key-value pairs in order, within the given range.
@@ -996,11 +999,42 @@ impl<K, V> NodeBounds<K, V> {
     }
 }
 
+// region common trait impls
 impl<'store, K: Debug, V: Debug> Debug for BTreeMap<'store, K, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.print(f)
     }
 }
+
+impl<'store, K: PartialEq, V: PartialEq> PartialEq for BTreeMap<'store, K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter().eq(other.iter())
+    }
+}
+
+impl<'store, K: Eq, V: Eq> Eq for BTreeMap<'store, K, V> {}
+
+impl<'store, K: PartialOrd, V: PartialOrd> PartialOrd for BTreeMap<'store, K, V> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.iter().partial_cmp(other.iter())
+    }
+}
+
+impl<'store, K: Ord, V: Ord> Ord for BTreeMap<'store, K, V> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(other.iter())
+    }
+}
+
+impl<'store, K: Hash, V: Hash> Hash for BTreeMap<'store, K, V> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for (k, v) in self.iter() {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
+}
+// endregion
 
 // region drop and dealloc
 impl<'store, K, V> Drop for BTreeMap<'store, K, V> {
@@ -1321,6 +1355,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
         Some(key_value)
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.length, Some(self.length))
     }
@@ -1390,6 +1425,7 @@ impl<'store, K, V> Iterator for IntoIter<'store, K, V> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.length, Some(self.length))
     }
@@ -1420,6 +1456,108 @@ impl<'store, K, V> ExactSizeIterator for IntoIter<'store, K, V> {
 }
 
 impl<'store, K, V> FusedIterator for IntoIter<'store, K, V> {}
+// endregion
+
+// region Keys
+pub struct Keys<'a, K, V>(Iter<'a, K, V>);
+
+impl<'a, K, V> Iterator for Keys<'a, K, V> {
+    type Item = &'a K;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|(k, _)| k)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(k, _)| k)
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for Keys<'a, K, V> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
+// endregion
+
+// region Values
+pub struct Values<'a, K, V>(Iter<'a, K, V>);
+
+impl<'a, K, V> Iterator for Values<'a, K, V> {
+    type Item = &'a V;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|(_, v)| v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, K, V> DoubleEndedIterator for Values<'a, K, V> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(_, v)| v)
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for Values<'a, K, V> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'a, K, V> FusedIterator for Values<'a, K, V> {}
+// endregion
+
+// region ValuesMut
+pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
+    type Item = &'a mut V;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|(_, v)| v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, K, V> DoubleEndedIterator for ValuesMut<'a, K, V> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(_, v)| v)
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for ValuesMut<'a, K, V> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 // endregion
 
 // region Range
