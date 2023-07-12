@@ -93,7 +93,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     // region retrieval
     /// Whether the map contains the key
     #[inline]
-    pub fn contains_key<Q: Ord>(&self, key: &Q) -> bool
+    pub fn contains_key<Q: Ord + ?Sized>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,
     {
@@ -102,7 +102,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Returns a reference to the value corresponding to the key.
     #[inline]
-    pub fn get<Q: Ord>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q: Ord + ?Sized>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
@@ -114,7 +114,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Returns a mutable reference to the value corresponding to the key.
     #[inline]
-    pub fn get_mut<Q: Ord>(&mut self, key: &Q) -> Option<&mut V>
+    pub fn get_mut<Q: Ord + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
@@ -128,7 +128,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     ///
     /// This is (only) useful when `Q` is a different type than `K`.
     #[inline]
-    pub fn get_key<Q: Ord>(&self, key: &Q) -> Option<&K>
+    pub fn get_key<Q: Ord + ?Sized>(&self, key: &Q) -> Option<&K>
     where
         K: Borrow<Q>,
     {
@@ -142,7 +142,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     ///
     /// This is (only) useful when `Q` is a different type than `K`.
     #[inline]
-    pub fn get_key_value<Q: Ord>(&self, key: &Q) -> Option<(&K, &V)>
+    pub fn get_key_value<Q: Ord + ?Sized>(&self, key: &Q) -> Option<(&K, &V)>
     where
         K: Borrow<Q>,
     {
@@ -156,7 +156,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     ///
     /// This is (only) useful when `Q` is a different type than `K`.
     #[inline]
-    pub fn get_key_value_mut<Q: Ord>(&mut self, key: &Q) -> Option<(&K, &mut V)>
+    pub fn get_key_value_mut<Q: Ord + ?Sized>(&mut self, key: &Q) -> Option<(&K, &mut V)>
     where
         K: Borrow<Q>,
     {
@@ -238,7 +238,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Removes the equivalent key and returns the actual key and value, if present.
     #[inline]
-    pub fn remove_key_value<Q: Ord>(&mut self, key: &Q) -> Option<(K, V)>
+    pub fn remove_key_value<Q: Ord + ?Sized>(&mut self, key: &Q) -> Option<(K, V)>
     where
         K: Clone + Borrow<Q>,
     {
@@ -254,7 +254,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Removes the equivalent key and returns the value if present.
     #[inline]
-    pub fn remove<Q: Ord>(&mut self, key: &Q) -> Option<V>
+    pub fn remove<Q: Ord + ?Sized>(&mut self, key: &Q) -> Option<V>
     where
         K: Clone + Borrow<Q>,
     {
@@ -603,7 +603,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's key-value pairs in order, within the given range.
     #[inline]
-    pub fn range<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Range<'_, K, V>
+    pub fn range<Q: Ord + ?Sized>(&self, bounds: impl RangeBounds<Q>) -> Range<'_, K, V>
     where
         K: Borrow<Q>,
     {
@@ -612,7 +612,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's key-value pairs in order, within the given range.. Values are mutable
     #[inline]
-    pub fn range_mut<Q: Ord>(&mut self, bounds: impl RangeBounds<Q>) -> RangeMut<'_, K, V>
+    pub fn range_mut<Q: Ord + ?Sized>(&mut self, bounds: impl RangeBounds<Q>) -> RangeMut<'_, K, V>
     where
         K: Borrow<Q>,
     {
@@ -621,7 +621,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's keys in order, within the given range.
     #[inline]
-    pub fn range_keys<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item = &K> + '_
+    pub fn range_keys<Q: Ord + ?Sized>(
+        &self,
+        bounds: impl RangeBounds<Q>,
+    ) -> impl Iterator<Item = &K> + '_
     where
         K: Borrow<Q>,
     {
@@ -630,7 +633,10 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's values in order, within the given range.
     #[inline]
-    pub fn range_values<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> impl Iterator<Item = &V> + '_
+    pub fn range_values<Q: Ord + ?Sized>(
+        &self,
+        bounds: impl RangeBounds<Q>,
+    ) -> impl Iterator<Item = &V> + '_
     where
         K: Borrow<Q>,
     {
@@ -639,7 +645,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     /// Iterates over the map's values in order, within the given range. Values are mutable
     #[inline]
-    pub fn range_values_mut<Q: Ord>(
+    pub fn range_values_mut<Q: Ord + ?Sized>(
         &mut self,
         bounds: impl RangeBounds<Q>,
     ) -> impl Iterator<Item = &mut V> + '_
@@ -669,7 +675,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
 
     // /// Drains elements within the given range
     // #[inline]
-    // pub fn drain_range<Q: Ord>(&mut self, bounds: impl RangeBounds<Q>) -> DrainRange<'_, K, V> where K: Borrow<Q> {
+    // pub fn drain_range<Q: Ord + ?Sized>(&mut self, bounds: impl RangeBounds<Q>) -> DrainRange<'_, K, V> where K: Borrow<Q> {
     //     DrainRange::new(self, bounds)
     // }
 
@@ -706,7 +712,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     }
 
     #[inline]
-    fn find<Q: Ord>(&self, key: &Q) -> Find<K, V>
+    fn find<Q: Ord + ?Sized>(&self, key: &Q) -> Find<K, V>
     where
         K: Borrow<Q>,
     {
@@ -737,7 +743,7 @@ impl<'store, K, V> BTreeMap<'store, K, V> {
     }
 
     #[inline]
-    fn node_bounds<Q: Ord>(&self, bounds: impl RangeBounds<Q>) -> Option<NodeBounds<K, V>>
+    fn node_bounds<Q: Ord + ?Sized>(&self, bounds: impl RangeBounds<Q>) -> Option<NodeBounds<K, V>>
     where
         K: Borrow<Q>,
     {
@@ -1571,7 +1577,7 @@ pub struct Range<'a, K, V> {
 //noinspection DuplicatedCode
 impl<'a, K, V> Range<'a, K, V> {
     #[inline]
-    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
+    fn new<Q: Ord + ?Sized>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
     where
         K: Borrow<Q>,
     {
@@ -1676,7 +1682,7 @@ pub struct RangeMut<'a, K, V> {
 //noinspection DuplicatedCode
 impl<'a, K, V> RangeMut<'a, K, V> {
     #[inline]
-    fn new<Q: Ord>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
+    fn new<Q: Ord + ?Sized>(tree: &'a BTreeMap<K, V>, bounds: impl RangeBounds<Q>) -> Self
     where
         K: Borrow<Q>,
     {

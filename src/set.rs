@@ -50,7 +50,7 @@ impl<'store, T> BTreeSet<'store, T> {
 
     /// Returns `true` if the set contains a value.
     #[inline]
-    pub fn contains<U: Ord>(&self, value: &U) -> bool
+    pub fn contains<U: Ord + ?Sized>(&self, value: &U) -> bool
     where
         T: Borrow<U>,
     {
@@ -61,7 +61,7 @@ impl<'store, T> BTreeSet<'store, T> {
     ///
     /// This is (only) useful when `U` is a different type than `T`.
     #[inline]
-    pub fn get<U: Ord>(&self, value: &U) -> Option<&T>
+    pub fn get<U: Ord + ?Sized>(&self, value: &U) -> Option<&T>
     where
         T: Borrow<U>,
     {
@@ -79,7 +79,7 @@ impl<'store, T> BTreeSet<'store, T> {
 
     /// Removes a value from the set. Returns `true` if the value was present.
     #[inline]
-    pub fn remove<U: Ord>(&mut self, value: &U) -> bool
+    pub fn remove<U: Ord + ?Sized>(&mut self, value: &U) -> bool
     where
         T: Borrow<U> + Clone,
     {
@@ -134,7 +134,7 @@ impl<'store, T> BTreeSet<'store, T> {
 
     /// Returns an iterator over the set within the given bounds
     #[inline]
-    pub fn range<U: Ord>(&self, bounds: impl RangeBounds<U>) -> Range<T>
+    pub fn range<U: Ord + ?Sized>(&self, bounds: impl RangeBounds<U>) -> Range<T>
     where
         T: Borrow<U>,
     {
