@@ -1145,6 +1145,7 @@ unsafe fn dealloc_up_lasts<K, V>(
 }
 // endregion
 
+// region iterators (almost all boilerplate)
 //noinspection DuplicatedCode
 // region iterator impls
 impl<'store: 'a, 'a, K, V> IntoIterator for &'a BTreeMap<'store, K, V> {
@@ -1178,7 +1179,6 @@ impl<'store, K, V> IntoIterator for BTreeMap<'store, K, V> {
 }
 // endregion
 
-// region iterators (almost all boilerplate)
 // region Iter
 pub struct Iter<'a, K, V> {
     cursor: Cursor<'a, K, V>,

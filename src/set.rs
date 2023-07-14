@@ -2,6 +2,7 @@ use crate::{BTreeMap, BTreeStore};
 use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
+use std::iter::FusedIterator;
 use std::ops::RangeBounds;
 
 /// A b-tree set.
@@ -151,6 +152,7 @@ impl<'store, T: Debug> Debug for BTreeSet<'store, T> {
 // endregion
 
 // region iterators
+// region impl
 impl<'store, T> IntoIterator for BTreeSet<'store, T> {
     type Item = T;
     type IntoIter = IntoIter<'store, T>;
@@ -171,7 +173,9 @@ impl<'a, 'store: 'a, T> IntoIterator for &'a BTreeSet<'store, T> {
         self.iter()
     }
 }
+// endregion
 
+// region Iter
 pub struct Iter<'a, T>(crate::map::Iter<'a, T, ()>);
 
 impl<'a, T> Iterator for Iter<'a, T> {
@@ -188,6 +192,24 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(k, &())| k)
+    }
+}
+
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'a, T> FusedIterator for Iter<'a, T> {}
+// endregion
+
+// region IntoIter
 pub struct IntoIter<'store, T>(crate::map::IntoIter<'store, T, ()>);
 
 impl<'store, T> Iterator for IntoIter<'store, T> {
@@ -204,6 +226,24 @@ impl<'store, T> Iterator for IntoIter<'store, T> {
     }
 }
 
+impl<'store, T> DoubleEndedIterator for IntoIter<'store, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(k, ())| k)
+    }
+}
+
+impl<'store, T> ExactSizeIterator for IntoIter<'store, T> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'store, T> FusedIterator for IntoIter<'store, T> {}
+// endregion
+
+// region Range
 pub struct Range<'a, T>(crate::map::Range<'a, T, ()>);
 
 impl<'a, T> Iterator for Range<'a, T> {
@@ -219,6 +259,14 @@ impl<'a, T> Iterator for Range<'a, T> {
         self.0.size_hint()
     }
 }
+
+impl<'a, T> DoubleEndedIterator for Range<'a, T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.0.next_back().map(|(k, &())| k)
+    }
+}
+// endregion
 // endregion
 
 #[cfg(feature = "copyable")]
