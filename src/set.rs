@@ -149,6 +149,13 @@ impl<'store, T: Debug> Debug for BTreeSet<'store, T> {
         self.print(f)
     }
 }
+
+impl<'store, T: Ord + Clone> Extend<T> for BTreeSet<'store, T> {
+    #[inline]
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.0.extend(iter.into_iter().map(|v| (v, ())))
+    }
+}
 // endregion
 
 // region iterators

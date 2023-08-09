@@ -93,6 +93,25 @@ pub fn update() {
     }
 }
 
+#[test]
+pub fn extend() {
+    let store = BTreeStore::new();
+    let mut btree = BTreeMap::new_in(&store);
+
+    let mut items = ITEMS;
+
+    let mut rng = SmallRng::from_seed(*SEED);
+    items.shuffle(&mut rng);
+
+    btree.extend(items.iter().map(|(key, value)| (*key, *value)));
+    btree.validate();
+    println!("{:?}", btree);
+
+    for (key, value) in &items {
+        assert_eq!(btree.get(key), Some(value));
+    }
+}
+
 const ITEMS: [(usize, usize); 100] = [
     (4223, 5948),
     (8175, 4629),

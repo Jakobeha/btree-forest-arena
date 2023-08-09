@@ -1040,6 +1040,14 @@ impl<'store, K: Hash, V: Hash> Hash for BTreeMap<'store, K, V> {
         }
     }
 }
+
+impl<'store, K: Ord + Clone, V> Extend<(K, V)> for BTreeMap<'store, K, V> {
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        for (k, v) in iter {
+            self.insert(k, v);
+        }
+    }
+}
 // endregion
 
 // region drop and dealloc
