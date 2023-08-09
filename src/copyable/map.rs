@@ -29,6 +29,20 @@ impl<'store, K, V> From<crate::BTreeMap<'store, K, V>> for BTreeMap<'store, K, V
 }
 
 impl<'store, K, V> BTreeMap<'store, K, V> {
+    /// Helper function to construct a copyable b-tree map by constructing a mutable one and then
+    /// immediately wrapping it.
+    ///
+    /// This literally just creates the mutable map, runs the inner function, and then wraps it.
+    #[inline]
+    pub fn build(
+        store: &'store BTreeStore<K, V>,
+        f: impl FnOnce(&mut crate::BTreeMap<'store, K, V>),
+    ) -> Self {
+        let mut map = crate::BTreeMap::new_in(store);
+        f(&mut map);
+        Self::from(map)
+    }
+
     // region length
     /// Returns the number of elements in the map.
     #[inline]

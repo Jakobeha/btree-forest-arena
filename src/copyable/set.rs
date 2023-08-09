@@ -27,6 +27,20 @@ impl<'store, T> From<crate::BTreeSet<'store, T>> for BTreeSet<'store, T> {
 }
 
 impl<'store, T> BTreeSet<'store, T> {
+    /// Helper function to construct a copyable b-tree set by constructing a mutable one and then
+    /// immediately wrapping it.
+    ///
+    /// This literally just creates the mutable set, runs the inner function, and then wraps it.
+    #[inline]
+    pub fn build(
+        store: &'store BTreeStore<T, ()>,
+        f: impl FnOnce(&mut crate::BTreeSet<'store, T>),
+    ) -> Self {
+        let mut set = crate::BTreeSet::new_in(store);
+        f(&mut set);
+        Self::from(set)
+    }
+
     /// Returns the number of elements in the set.
     #[inline]
     pub fn len(&self) -> usize {
